@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import GameEngine from './components/GameEngine';
-import { getMissionIntel } from './services/geminiService';
+import { getMissionIntel } from './services/missionIntelService';
 
 const App: React.FC = () => {
   const [level, setLevel] = useState(1);

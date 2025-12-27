@@ -56,6 +56,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
   const lastTimeRef = useRef<number>(0);
   const lastShotTimeRef = useRef<number>(0);
   const spawnTimerRef = useRef<number>(0);
+  const distanceRef = useRef<number>(0);
 
   // Use refs for values needed inside the animation frame but outside React state updates
   // to avoid closure issues and ensure "latest" values are used for simulation logic.
@@ -70,6 +71,10 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
   useEffect(() => {
     gameStatusRef.current = gameStatus;
   }, [gameStatus]);
+
+  useEffect(() => {
+    distanceRef.current = distance;
+  }, [distance]);
 
   const spawnEntity = useCallback(() => {
     const lane = Math.floor(Math.random() * LANE_COUNT);
@@ -109,12 +114,17 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
     lastTimeRef.current = time;
     const frameFactor = Math.min(deltaTime / 16, 3); // Cap frame factor to prevent huge teleports
 
+    const progress = Math.max(0, Math.min(1, distanceRef.current / TRACK_LENGTH));
+    const easedProgress = progress * progress;
+    const entitySpeed = 0.18 + (0.55 - 0.18) * easedProgress;
+
     if (gameStatusRef.current === GameStatus.GAMEOVER || gameStatusRef.current === GameStatus.VICTORY) return;
 
     // 1. Progress & Distance
     if (gameStatusRef.current === GameStatus.PLAYING) {
       setDistance(prev => {
         const next = prev + BASE_SPEED * frameFactor;
+        distanceRef.current = next;
         if (next >= TRACK_LENGTH) {
           setGameStatus(GameStatus.BOSS_FIGHT);
           setBoss({ name: "COMMANDER MUTANT", hp: 1500 * difficulty, maxHp: 1500 * difficulty, attacks: 0 });
@@ -153,7 +163,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
     setEntities(prevEntities => {
       const nextEntities: Entity[] = [];
       for (const e of prevEntities) {
-        const nextZ = e.z + (BASE_SPEED + 1.1) * frameFactor;
+        const nextZ = e.z + entitySpeed * frameFactor;
         
         // Player is roughly at z=90
         if (nextZ > 84 && nextZ < 94 && e.lane === currentLaneRef.current) {
