@@ -34,6 +34,27 @@ const ENTITY_COLORS: Record<EntityType, string> = {
   [EntityType.HEAL]: 'bg-red-900/60 border-red-500'
 };
 
+type Particle = {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+};
+
+type BossAttackType = 'SLAM' | 'BARRAGE' | 'SUMMON';
+
+type BossTelegraph = {
+  type: BossAttackType;
+  lanes: number[];
+  remainingMs: number;
+  durationMs: number;
+};
+
 const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory }) => {
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.PLAYING);
   const [score, setScore] = useState(0);
@@ -44,6 +65,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
   const [projectiles, setProjectiles] = useState<Projectile[]>([]);
   const [weapon, setWeapon] = useState<WeaponType>(WeaponType.HANDGUN);
   const [boss, setBoss] = useState<Boss | null>(null);
+
+  const [particles, setParticles] = useState<Particle[]>([]);
+  const [hitFlash, setHitFlash] = useState(0);
+  const [shake, setShake] = useState(0);
+  const [shakeOffset, setShakeOffset] = useState({ x: 0, y: 0 });
+  const [playerHurt, setPlayerHurt] = useState(0);
+  const [playerHurtOffset, setPlayerHurtOffset] = useState({ x: 0, y: 0, r: 0 });
   
   const [bulletBuffs, setBulletBuffs] = useState({
     fireRateMult: 1,
@@ -57,12 +85,17 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
   const lastShotTimeRef = useRef<number>(0);
   const spawnTimerRef = useRef<number>(0);
   const distanceRef = useRef<number>(0);
+  const bossAttackTimerRef = useRef<number>(0);
+  const bossAttackCooldownMsRef = useRef<number>(2200);
 
   // Use refs for values needed inside the animation frame but outside React state updates
   // to avoid closure issues and ensure "latest" values are used for simulation logic.
   const currentLaneRef = useRef(playerLane);
   const gameStatusRef = useRef(gameStatus);
   const difficulty = Math.pow(LEVEL_DIFFICULTY_MODIFIER, level - 1);
+
+  const [bossTelegraph, setBossTelegraph] = useState<BossTelegraph | null>(null);
+  const bossTelegraphRef = useRef<BossTelegraph | null>(null);
 
   useEffect(() => {
     currentLaneRef.current = playerLane;
@@ -73,8 +106,97 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
   }, [gameStatus]);
 
   useEffect(() => {
+    bossTelegraphRef.current = bossTelegraph;
+  }, [bossTelegraph]);
+
+  useEffect(() => {
     distanceRef.current = distance;
   }, [distance]);
+
+  const addHitParticles = useCallback((x: number, y: number, isFire?: boolean) => {
+    const baseColor = isFire ? '#ff3300' : '#ffff00';
+    setParticles(prev => {
+      const next = [...prev];
+      const count = 10;
+      for (let i = 0; i < count; i++) {
+        const size = 2 + Math.random() * 5;
+        const maxLife = 140 + Math.random() * 170;
+        next.push({
+          id: Math.random().toString(36).substr(2, 9),
+          x: x + (Math.random() - 0.5) * 2,
+          y: y + (Math.random() - 0.5) * 2,
+          vx: (Math.random() - 0.5) * 1.6,
+          vy: -Math.random() * 2.2,
+          life: maxLife,
+          maxLife,
+          size,
+          color: baseColor
+        });
+      }
+      return next;
+    });
+  }, []);
+
+  const damagePlayer = useCallback((amount: number) => {
+    setPlayerHp(h => {
+      const newHp = h - amount;
+      if (newHp < h) {
+        setHitFlash(1);
+        setShake(1);
+        setPlayerHurt(1);
+      }
+      if (newHp <= 0) setGameStatus(GameStatus.GAMEOVER);
+      return Math.max(0, newHp);
+    });
+  }, []);
+
+  const startBossTelegraph = useCallback((type: BossAttackType, lanes: number[], durationMs: number) => {
+    const tg: BossTelegraph = { type, lanes, remainingMs: durationMs, durationMs };
+    bossTelegraphRef.current = tg;
+    setBossTelegraph(tg);
+  }, []);
+
+  const executeBossAttack = useCallback((tg: BossTelegraph) => {
+    if (tg.type === 'SLAM') {
+      const lane = tg.lanes[0] ?? 0;
+      if (currentLaneRef.current === lane) {
+        damagePlayer(18);
+      }
+      setShake(1);
+      addHitParticles((lane * 20) + 10, 90, true);
+      return;
+    }
+
+    if (tg.type === 'BARRAGE') {
+      if (tg.lanes.includes(currentLaneRef.current)) {
+        damagePlayer(14);
+      }
+      for (const lane of tg.lanes) {
+        addHitParticles((lane * 20) + 10, 90, true);
+      }
+      return;
+    }
+
+    if (tg.type === 'SUMMON') {
+      setEntities(prev => {
+        const next = [...prev];
+        for (const lane of tg.lanes) {
+          next.push({
+            id: Math.random().toString(36).substr(2, 9),
+            lane,
+            z: -10,
+            type: EntityType.ZOMBIE,
+            hp: 35 * difficulty,
+            maxHp: 35 * difficulty,
+            width: 50,
+            height: 50
+          });
+        }
+        return next;
+      });
+      return;
+    }
+  }, [addHitParticles, damagePlayer, difficulty]);
 
   const spawnEntity = useCallback(() => {
     const lane = Math.floor(Math.random() * LANE_COUNT);
@@ -120,6 +242,95 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
 
     if (gameStatusRef.current === GameStatus.GAMEOVER || gameStatusRef.current === GameStatus.VICTORY) return;
 
+    setHitFlash(v => (v > 0 ? Math.max(0, v - deltaTime / 120) : v));
+
+    setShake(v => {
+      if (v <= 0) return v;
+      const next = Math.max(0, v - deltaTime / 140);
+      if (next > 0) {
+        setShakeOffset({
+          x: (Math.random() - 0.5) * 10 * next,
+          y: (Math.random() - 0.5) * 10 * next
+        });
+      } else {
+        setShakeOffset({ x: 0, y: 0 });
+      }
+      return next;
+    });
+
+    setPlayerHurt(v => {
+      if (v <= 0) return v;
+      const next = Math.max(0, v - deltaTime / 160);
+      if (next > 0) {
+        setPlayerHurtOffset({
+          x: (Math.random() - 0.5) * 8 * next,
+          y: (Math.random() - 0.5) * 6 * next,
+          r: (Math.random() - 0.5) * 12 * next
+        });
+      } else {
+        setPlayerHurtOffset({ x: 0, y: 0, r: 0 });
+      }
+      return next;
+    });
+
+    setParticles(prev => {
+      if (prev.length === 0) return prev;
+      const next: Particle[] = [];
+      for (const p of prev) {
+        const life = p.life - deltaTime;
+        if (life <= 0) continue;
+        next.push({
+          ...p,
+          life,
+          x: p.x + p.vx * frameFactor,
+          y: p.y + p.vy * frameFactor,
+          vy: p.vy + 0.08 * frameFactor
+        });
+      }
+      return next;
+    });
+
+    if (gameStatusRef.current === GameStatus.BOSS_FIGHT) {
+      const tg = bossTelegraphRef.current;
+      if (tg) {
+        const nextRemaining = tg.remainingMs - deltaTime;
+        if (nextRemaining <= 0) {
+          bossTelegraphRef.current = null;
+          setBossTelegraph(null);
+          executeBossAttack(tg);
+          setBoss(b => (b ? { ...b, attacks: (b.attacks ?? 0) + 1 } : b));
+          bossAttackTimerRef.current = 0;
+          bossAttackCooldownMsRef.current = 1800 + Math.random() * 900;
+        } else {
+          const nextTg = { ...tg, remainingMs: nextRemaining };
+          bossTelegraphRef.current = nextTg;
+          setBossTelegraph(nextTg);
+        }
+      } else {
+        bossAttackTimerRef.current += deltaTime;
+        if (bossAttackTimerRef.current >= bossAttackCooldownMsRef.current) {
+          bossAttackTimerRef.current = 0;
+          const r = Math.random();
+          if (r < 0.45) {
+            const lane = Math.floor(Math.random() * LANE_COUNT);
+            startBossTelegraph('SLAM', [lane], 650);
+          } else if (r < 0.8) {
+            let laneA = Math.floor(Math.random() * LANE_COUNT);
+            let laneB = Math.floor(Math.random() * LANE_COUNT);
+            if (laneB === laneA) laneB = (laneA + 1) % LANE_COUNT;
+            startBossTelegraph('BARRAGE', [laneA, laneB], 850);
+          } else {
+            const lanes = [
+              Math.floor(Math.random() * LANE_COUNT),
+              Math.floor(Math.random() * LANE_COUNT),
+              Math.floor(Math.random() * LANE_COUNT)
+            ].filter((v, idx, arr) => arr.indexOf(v) === idx);
+            startBossTelegraph('SUMMON', lanes.length > 0 ? lanes : [2], 900);
+          }
+        }
+      }
+    }
+
     // 1. Progress & Distance
     if (gameStatusRef.current === GameStatus.PLAYING) {
       setDistance(prev => {
@@ -128,6 +339,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
         if (next >= TRACK_LENGTH) {
           setGameStatus(GameStatus.BOSS_FIGHT);
           setBoss({ name: "COMMANDER MUTANT", hp: 1500 * difficulty, maxHp: 1500 * difficulty, attacks: 0 });
+          bossAttackTimerRef.current = 0;
+          bossAttackCooldownMsRef.current = 1200;
           return TRACK_LENGTH;
         }
         return next;
@@ -170,6 +383,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
           if (e.type === EntityType.ZOMBIE || e.type === EntityType.OBSTACLE) {
             setPlayerHp(h => {
                 const newHp = h - (e.type === EntityType.ZOMBIE ? 12 : 25);
+                if (newHp < h) {
+                  setHitFlash(1);
+                  setShake(1);
+                  setPlayerHurt(1);
+                }
                 if (newHp <= 0) setGameStatus(GameStatus.GAMEOVER);
                 return Math.max(0, newHp);
             });
@@ -212,6 +430,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
           return currentEntities.map(e => {
             if (!hit && e.type === EntityType.ZOMBIE && e.lane === p.lane && Math.abs(e.z - nextZ) < 8) {
               hit = true;
+              addHitParticles((p.lane * 20) + 10, e.z, p.isFire);
               const newHp = e.hp - p.damage;
               if (newHp <= 0) setScore(s => s + 25);
               return { ...e, hp: newHp };
@@ -222,6 +441,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
 
         // Check hit against Boss
         if (!hit && gameStatusRef.current === GameStatus.BOSS_FIGHT && nextZ < 25) {
+          addHitParticles((p.lane * 20) + 10, 25, p.isFire);
           setBoss(b => {
             if (!b) return null;
             const newHp = b.hp - p.damage;
@@ -239,7 +459,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
     });
 
     requestRef.current = requestAnimationFrame(update);
-  }, [difficulty, spawnEntity, weapon, bulletBuffs]);
+  }, [difficulty, spawnEntity, weapon, bulletBuffs, executeBossAttack, startBossTelegraph]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(update);
@@ -260,13 +480,74 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
   }, []);
 
   return (
-    <div className="relative w-full h-[85vh] bg-[#0c0c0c] border-x-8 border-[#1a1a1a] overflow-hidden select-none shadow-inner">
+    <div
+      className="relative w-full h-[85vh] bg-[#0c0c0c] border-x-8 border-[#1a1a1a] overflow-hidden select-none shadow-inner"
+      style={{ transform: `translate3d(${shakeOffset.x}px, ${shakeOffset.y}px, 0)` }}
+    >
       {/* Visual Lanes */}
       <div className="absolute inset-0 flex">
         {[...Array(LANE_COUNT)].map((_, i) => (
           <div key={i} className={`flex-1 border-r border-white/5 scrolling-lane ${i === 0 ? 'border-l border-white/5' : ''}`}></div>
         ))}
       </div>
+
+      {bossTelegraph && (
+        <div className="absolute inset-0 flex pointer-events-none z-[15]">
+          {[...Array(LANE_COUNT)].map((_, i) => {
+            const active = bossTelegraph.lanes.includes(i);
+            if (!active) return <div key={i} className="flex-1"></div>;
+            const t = 1 - Math.max(0, Math.min(1, bossTelegraph.remainingMs / bossTelegraph.durationMs));
+            const alpha = 0.10 + 0.22 * Math.abs(Math.sin(t * Math.PI * 6));
+            const isSummon = bossTelegraph.type === 'SUMMON';
+            const color = isSummon ? '0,255,160' : '255,0,0';
+            return (
+              <div
+                key={i}
+                className="flex-1"
+                style={{
+                  background: `linear-gradient(180deg, rgba(${color},${alpha}) 0%, rgba(${color},${alpha * 0.35}) 55%, rgba(${color},0) 100%)`,
+                  boxShadow: `inset 0 0 50px rgba(${color},${alpha * 0.65})`
+                }}
+              ></div>
+            );
+          })}
+
+          {bossTelegraph.type === 'SUMMON' && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg border border-emerald-400/40 bg-emerald-900/20 backdrop-blur-sm">
+              <div className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">Infestation Incoming</div>
+            </div>
+          )}
+
+          {(bossTelegraph.type === 'SLAM' || bossTelegraph.type === 'BARRAGE') && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg border border-red-500/40 bg-red-950/20 backdrop-blur-sm">
+              <div className="text-[10px] font-black uppercase tracking-[0.35em] text-red-300">Lane Strike</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {particles.map(p => (
+        <div
+          key={p.id}
+          className="absolute rounded-full pointer-events-none z-30"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+            backgroundColor: p.color,
+            opacity: Math.max(0, Math.min(1, p.life / p.maxLife)),
+            transform: 'translate(-50%, -50%)',
+            boxShadow: `0 0 ${p.size * 3}px ${p.color}`,
+            mixBlendMode: 'screen'
+          }}
+        ></div>
+      ))}
+
+      <div
+        className="absolute inset-0 pointer-events-none z-[60]"
+        style={{ backgroundColor: '#ff0000', opacity: Math.max(0, Math.min(1, hitFlash)) * 0.18 }}
+      ></div>
 
       {/* Distance Progress */}
       <div className="absolute top-0 left-0 w-full h-3 bg-black/80 z-50">
@@ -341,7 +622,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, onGameOver, onVictory })
         className="absolute w-20 h-24 flex flex-col items-center justify-end z-30 transition-all duration-100"
         style={{ left: `${(playerLane * 20) + 10}%`, top: '90%', transform: 'translate(-50%, -100%)' }}
       >
-        <div className="relative">
+        <div
+          className="relative"
+          style={{
+            transform: `translate(${playerHurtOffset.x}px, ${playerHurtOffset.y}px) rotate(${playerHurtOffset.r}deg)`,
+            filter: playerHurt > 0 ? `drop-shadow(0 0 ${18 * playerHurt}px rgba(255,80,80,0.85))` : undefined
+          }}
+        >
           {/* Engine Aura */}
           <div className="absolute -inset-4 bg-blue-500/10 blur-xl rounded-full animate-pulse"></div>
           <i className="fa-solid fa-person-running text-5xl text-blue-400 drop-shadow-[0_0_15px_rgba(96,165,250,0.8)]"></i>
