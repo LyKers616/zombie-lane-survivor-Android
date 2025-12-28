@@ -968,9 +968,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
   return (
     <div
-      className="relative w-full h-[85vh] bg-[#0c0c0c] border-x-8 border-[#1a1a1a] overflow-hidden select-none shadow-inner"
-      style={{ transform: `translate3d(${shakeOffset.x}px, ${shakeOffset.y}px, 0)` }}
+      className="relative w-full h-[85svh] md:h-[85vh] bg-[#0c0c0c] border-x-8 border-[#1a1a1a] overflow-hidden select-none shadow-inner"
     >
+      <div
+        className="absolute inset-0"
+        style={{ transform: `translate3d(${Math.round(shakeOffset.x)}px, ${Math.round(shakeOffset.y)}px, 0)` }}
+      >
       {/* Visual Lanes */}
       <div className="absolute inset-0 flex">
         {[...Array(LANE_COUNT)].map((_, i) => (
@@ -1031,29 +1034,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         ></div>
       ))}
 
-      <div
-        className="absolute inset-0 pointer-events-none z-[60]"
-        style={{ backgroundColor: '#ff0000', opacity: Math.max(0, Math.min(1, hitFlash)) * 0.18 }}
-      ></div>
-
-      <div
-        className="absolute inset-0 pointer-events-none z-[61]"
-        style={{ backgroundColor: '#ffd84a', opacity: Math.max(0, Math.min(1, critFlash)) * 0.14 }}
-      ></div>
-
-      {/* Distance Progress */}
-      <div className="absolute top-0 left-0 w-full h-3 bg-black/80 z-50">
-        <div 
-          className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.8)] transition-all duration-300" 
-          style={{ width: `${(progressDistance / TRACK_LENGTH) * 100}%` }}
-        ></div>
-      </div>
-
       {/* Projectiles */}
       {projectiles.map(p => (
         <div 
           key={p.id}
-          className="absolute w-2 h-6 rounded-full z-10 animate-pulse"
+          className="absolute w-2 h-6 rounded-full z-10 animate-none md:animate-pulse"
           style={{ 
             left: `calc(${(p.lane * 20) + 10}% + ${(p.xOffset ?? 0)}px)`, 
             top: `${p.z}%`, 
@@ -1129,9 +1114,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             <div className="h-full bg-gradient-to-r from-red-700 to-red-500 rounded-full transition-all" style={{ width: `${(boss.hp / boss.maxHp) * 100}%` }}></div>
           </div>
           <div className="flex justify-center mt-6 gap-12 text-6xl text-red-600 opacity-20">
-            <i className="fa-solid fa-skull-crossbones animate-bounce"></i>
-            <i className="fa-solid fa-biohazard animate-pulse scale-150"></i>
-            <i className="fa-solid fa-skull-crossbones animate-bounce"></i>
+            <i className="fa-solid fa-skull-crossbones animate-none md:animate-bounce"></i>
+            <i className="fa-solid fa-biohazard animate-none md:animate-pulse scale-150"></i>
+            <i className="fa-solid fa-skull-crossbones animate-none md:animate-bounce"></i>
           </div>
         </div>
       )}
@@ -1149,7 +1134,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           }}
         >
           {/* Engine Aura */}
-          <div className="absolute -inset-4 bg-blue-500/10 blur-xl rounded-full animate-pulse"></div>
+          <div className="absolute -inset-4 bg-blue-500/10 blur-xl rounded-full animate-none md:animate-pulse"></div>
           {skills.rage.activeRemaining > 0 && (
             <div className="absolute -inset-6 bg-red-500/15 blur-2xl rounded-full"></div>
           )}
@@ -1165,17 +1150,36 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           {WEAPON_MAP[weapon].name}
         </div>
       </div>
+      </div>
+
+      <div
+        className="absolute inset-0 pointer-events-none z-[60]"
+        style={{ backgroundColor: '#ff0000', opacity: Math.max(0, Math.min(1, hitFlash)) * 0.18 }}
+      ></div>
+
+      <div
+        className="absolute inset-0 pointer-events-none z-[61]"
+        style={{ backgroundColor: '#ffd84a', opacity: Math.max(0, Math.min(1, critFlash)) * 0.14 }}
+      ></div>
+
+      {/* Distance Progress */}
+      <div className="absolute top-0 left-0 w-full h-3 bg-black/80 z-50">
+        <div 
+          className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.8)] transition-all duration-300" 
+          style={{ width: `${(progressDistance / TRACK_LENGTH) * 100}%` }}
+        ></div>
+      </div>
 
       {/* HUD Bottom */}
-      <div className="absolute bottom-6 left-8 right-8 flex justify-between items-end pointer-events-none z-40">
-        <div className="w-64">
+      <div className="absolute bottom-[calc(7rem+env(safe-area-inset-bottom))] md:bottom-6 left-4 md:left-8 right-4 md:right-8 flex flex-col md:flex-row justify-between items-stretch md:items-end gap-3 md:gap-0 pointer-events-none z-40">
+        <div className="w-full md:w-64">
           <div className="flex justify-between items-center mb-1">
             <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Life Signal</span>
             <span className="text-lg font-black text-white">{Math.ceil(playerHp)}%</span>
           </div>
           <div className="w-full h-4 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
             <div 
-              className={`h-full rounded-full transition-all duration-300 ${playerHp < 30 ? 'bg-red-600 animate-pulse' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} 
+              className={`h-full rounded-full transition-all duration-300 ${playerHp < 30 ? 'bg-red-600 animate-none md:animate-pulse' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} 
               style={{ width: `${playerHp}%` }}
             ></div>
           </div>
@@ -1203,9 +1207,14 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
                 const cdPct = s.cooldownSeconds > 0 ? Math.max(0, Math.min(1, s.cooldownRemaining / s.cooldownSeconds)) : 0;
                 const dim = !s.unlocked || !ready;
                 return (
-                  <div
+                  <button
                     key={slot.id}
-                    className={`relative w-12 h-12 rounded-xl border overflow-hidden ${dim ? 'border-white/10 bg-black/40' : 'border-cyan-400/40 bg-cyan-950/20'}`}
+                    type="button"
+                    onPointerDown={() => {
+                      unlockAudio();
+                      tryUseSkill(slot.id);
+                    }}
+                    className={`relative w-12 h-12 rounded-xl border overflow-hidden pointer-events-auto active:scale-95 ${dim ? 'border-white/10 bg-black/40' : 'border-cyan-400/40 bg-cyan-950/20'}`}
                     style={{ boxShadow: ready ? '0 0 18px rgba(34,211,238,0.25)' : undefined }}
                   >
                     <div className={`absolute inset-0 ${!s.unlocked ? 'bg-black/60' : ''}`}></div>
@@ -1215,19 +1224,19 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
                     {s.cooldownRemaining > 0 && (
                       <div className="absolute inset-0 bg-black/60" style={{ clipPath: `inset(${(1 - cdPct) * 100}% 0 0 0)` }}></div>
                     )}
-                    <div className="absolute bottom-0 left-0 right-0 text-[9px] font-black text-white/70 bg-black/70 text-center">
+                    <div className="absolute bottom-0 left-0 right-0 text-[9px] font-black text-white/70 bg-black/70 text-center hidden md:block">
                       {slot.key}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           </div>
         </div>
 
-        <div className="text-right">
+        <div className="md:text-right">
           <div className="text-neutral-500 text-[10px] font-black uppercase tracking-[0.3em]">Credits</div>
-          <div className="text-5xl font-black text-white font-mono tracking-tighter">{Math.floor(score).toLocaleString()}</div>
+          <div className="text-3xl md:text-5xl font-black text-white font-mono tracking-tighter">{Math.floor(score).toLocaleString()}</div>
         </div>
       </div>
 

@@ -292,16 +292,16 @@ const App: React.FC = () => {
       
       {/* Mobile Controls Overlay (only if playing) */}
       {gameState === 'PLAYING' && (
-        <div className="fixed bottom-8 left-0 right-0 flex justify-between px-8 md:hidden pointer-events-none">
+        <div className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-0 right-0 flex justify-between px-5 md:hidden pointer-events-none">
           <button 
             onPointerDown={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }))}
-            className="w-20 h-20 bg-white/10 rounded-full border border-white/20 backdrop-blur-sm pointer-events-auto active:scale-90 flex items-center justify-center"
+            className="w-[72px] h-[72px] bg-white/10 rounded-full border border-white/20 backdrop-blur-sm pointer-events-auto active:scale-90 flex items-center justify-center touch-manipulation"
           >
             <i className="fa-solid fa-arrow-left text-white text-3xl"></i>
           </button>
           <button 
             onPointerDown={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }))}
-            className="w-20 h-20 bg-white/10 rounded-full border border-white/20 backdrop-blur-sm pointer-events-auto active:scale-90 flex items-center justify-center"
+            className="w-[72px] h-[72px] bg-white/10 rounded-full border border-white/20 backdrop-blur-sm pointer-events-auto active:scale-90 flex items-center justify-center touch-manipulation"
           >
             <i className="fa-solid fa-arrow-right text-white text-3xl"></i>
           </button>

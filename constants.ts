@@ -81,7 +81,7 @@ export const SKILL_DEFS: Record<SkillId, {
 };
 
 export const AOE_DAMAGE_MULT = 3.0;
-export const AOE_Z_RANGE = 38;
+export const AOE_Z_RANGE = 43;
 
 export const ENDLESS_SCORE_PER_SECOND = 2;
 export const ENDLESS_DIFFICULTY_TIME_SCALE_SECONDS = 30;
