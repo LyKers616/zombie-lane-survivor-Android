@@ -1232,7 +1232,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="absolute top-12 left-1/2 -translate-x-1/2 w-4/5 max-w-lg z-40">
           <div className="flex justify-between items-end mb-1">
             <span className="text-red-500 font-black text-xs tracking-widest uppercase italic">{boss.name}</span>
-            <span className="text-white font-mono text-sm">{Math.ceil(boss.hp)} HP</span>
+            <span className="text-white font-mono text-sm">{Math.ceil(boss.hp)} 血量</span>
           </div>
           <div className="w-full h-5 bg-black/60 rounded-full border-2 border-red-500/40 p-0.5 shadow-2xl">
             <div className="h-full bg-gradient-to-r from-red-700 to-red-500 rounded-full transition-all" style={{ width: `${(boss.hp / boss.maxHp) * 100}%` }}></div>
@@ -1329,7 +1329,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest"><HP></HP></span>
+              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">血</span>
               <span className="text-[11px] font-black text-white">{Math.ceil(playerHp)}%</span>
             </div>
             <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
@@ -1342,7 +1342,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
           <div className="flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest"><EN></EN></span>
+              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest">能</span>
               <span className="text-[11px] font-black text-white">{Math.floor(energy.current)}/{energy.max}</span>
             </div>
             <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
