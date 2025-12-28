@@ -2,32 +2,104 @@
 import React, { useState, useEffect } from 'react';
 import GameEngine from './components/GameEngine';
 import { getMissionIntel } from './services/missionIntelService';
+import { GameMode, GameSessionResult, LeaderboardEntry } from './types';
 
 const App: React.FC = () => {
   const [level, setLevel] = useState(1);
-  const [gameState, setGameState] = useState<'MENU' | 'INTEL' | 'PLAYING'>('MENU');
+  const [gameState, setGameState] = useState<'MENU' | 'INTEL' | 'PLAYING' | 'LEADERBOARD'>('MENU');
+  const [mode, setMode] = useState<GameMode>('CAMPAIGN');
   const [totalScore, setTotalScore] = useState(0);
   const [intel, setIntel] = useState<any>(null);
   const [isLoadingIntel, setIsLoadingIntel] = useState(false);
+  const [endlessLeaderboard, setEndlessLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [highlightEntryAt, setHighlightEntryAt] = useState<number | null>(null);
+
+  const ENDLESS_LB_KEY = 'zls_leaderboard_endless_v1';
+
+  const loadEndlessLeaderboard = () => {
+    try {
+      const raw = localStorage.getItem(ENDLESS_LB_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as LeaderboardEntry[];
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(e => e && typeof e.score === 'number' && typeof e.survivalTimeMs === 'number' && typeof e.kills === 'number' && typeof e.createdAt === 'number')
+        .map(e => ({
+          playerName: typeof e.playerName === 'string' ? e.playerName : 'Player',
+          score: e.score,
+          survivalTimeMs: e.survivalTimeMs,
+          kills: e.kills,
+          createdAt: e.createdAt
+        }));
+    } catch {
+      return [];
+    }
+  };
+
+  const saveEndlessLeaderboard = (entries: LeaderboardEntry[]) => {
+    localStorage.setItem(ENDLESS_LB_KEY, JSON.stringify(entries));
+    setEndlessLeaderboard(entries);
+  };
+
+  useEffect(() => {
+    setEndlessLeaderboard(loadEndlessLeaderboard());
+  }, []);
 
   const startLevel = async () => {
     setIsLoadingIntel(true);
+    setMode('CAMPAIGN');
     setGameState('INTEL');
     const missionIntel = await getMissionIntel(level);
     setIntel(missionIntel);
     setIsLoadingIntel(false);
   };
 
-  const handleGameOver = (sessionScore: number) => {
-    setTotalScore(prev => prev + sessionScore);
-    setGameState('MENU');
-    setLevel(1); // Reset level on complete loss
+  const startEndless = () => {
+    setMode('ENDLESS');
+    setGameState('PLAYING');
   };
 
-  const handleVictory = (sessionScore: number) => {
-    setTotalScore(prev => prev + sessionScore);
-    setLevel(prev => prev + 1);
+  const handleSessionEnd = (result: GameSessionResult) => {
+    setTotalScore(prev => prev + result.score);
+
+    if (result.mode === 'ENDLESS') {
+      const entry: LeaderboardEntry = {
+        playerName: `Player${Math.floor(100 + Math.random() * 900)}`,
+        score: result.score,
+        survivalTimeMs: result.survivalTimeMs,
+        kills: result.kills,
+        createdAt: Date.now()
+      };
+
+      const next = [...loadEndlessLeaderboard(), entry]
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          if (b.survivalTimeMs !== a.survivalTimeMs) return b.survivalTimeMs - a.survivalTimeMs;
+          return a.createdAt - b.createdAt;
+        })
+        .slice(0, 20);
+
+      saveEndlessLeaderboard(next);
+      setHighlightEntryAt(entry.createdAt);
+      setGameState('MENU');
+      return;
+    }
+
+    if (result.outcome === 'VICTORY') {
+      setLevel(prev => prev + 1);
+      setGameState('MENU');
+      return;
+    }
+
     setGameState('MENU');
+    setLevel(1);
+  };
+
+  const formatDuration = (ms: number) => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -58,6 +130,30 @@ const App: React.FC = () => {
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </button>
+
+              <button 
+                onClick={startEndless}
+                className="group relative px-8 py-4 bg-cyan-600 text-white font-black rounded-xl overflow-hidden transition-all hover:scale-105 active:scale-95 shadow-lg shadow-cyan-900/40"
+              >
+                <div className="relative z-10 flex items-center justify-center gap-2">
+                  <i className="fa-solid fa-infinity"></i>
+                  ENDLESS MODE
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              </button>
+
+              <button 
+                onClick={() => {
+                  setEndlessLeaderboard(loadEndlessLeaderboard());
+                  setGameState('LEADERBOARD');
+                }}
+                className="group relative px-8 py-4 bg-neutral-800 text-white font-black rounded-xl overflow-hidden transition-all hover:scale-105 active:scale-95 shadow-lg shadow-black/40 border border-neutral-700"
+              >
+                <div className="relative z-10 flex items-center justify-center gap-2">
+                  <i className="fa-solid fa-trophy"></i>
+                  LEADERBOARD
+                </div>
+              </button>
               
               <div className="bg-neutral-800 rounded-lg p-4 text-left border border-neutral-700">
                 <div className="text-neutral-400 text-xs uppercase font-bold mb-1">Survivor Intel</div>
@@ -67,7 +163,13 @@ const App: React.FC = () => {
                 </div>
                 <div className="text-white flex justify-between items-center">
                   <span>Total Killpoints:</span>
-                  <span className="font-mono text-blue-500">{totalScore}</span>
+                  <span className="font-mono text-blue-500">{Math.floor(totalScore).toLocaleString()}</span>
+                </div>
+                <div className="text-white flex justify-between items-center mt-2">
+                  <span>Endless Best:</span>
+                  <span className="font-mono text-cyan-400">
+                    {endlessLeaderboard.length > 0 ? Math.floor(endlessLeaderboard[0].score).toLocaleString() : '--'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -119,11 +221,71 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {gameState === 'LEADERBOARD' && (
+          <div className="p-10 min-h-[600px]">
+            <div className="flex items-center justify-between mb-8">
+              <div className="text-left">
+                <div className="text-neutral-500 text-xs uppercase tracking-[0.3em] font-black">Top Survivors</div>
+                <h2 className="text-4xl font-black text-white italic tracking-tighter">ENDLESS LEADERBOARD</h2>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    const ok = window.confirm('Clear leaderboard?');
+                    if (!ok) return;
+                    setHighlightEntryAt(null);
+                    saveEndlessLeaderboard([]);
+                  }}
+                  className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-black rounded-lg border border-neutral-700"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={() => setGameState('MENU')}
+                  className="px-4 py-2 bg-white hover:bg-neutral-200 text-black font-black rounded-lg"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-neutral-950/40 border border-neutral-800 rounded-2xl overflow-hidden">
+              <div className="grid grid-cols-12 gap-2 px-6 py-3 text-[10px] uppercase tracking-[0.25em] font-black text-neutral-500 border-b border-neutral-800">
+                <div className="col-span-1">#</div>
+                <div className="col-span-4">Player</div>
+                <div className="col-span-3 text-right">Score</div>
+                <div className="col-span-2 text-right">Survival</div>
+                <div className="col-span-2 text-right">Kills</div>
+              </div>
+
+              {endlessLeaderboard.length === 0 && (
+                <div className="px-6 py-10 text-center text-neutral-500 font-mono">No records yet. Run endless mode.</div>
+              )}
+
+              {endlessLeaderboard.map((e, idx) => {
+                const highlight = highlightEntryAt != null && e.createdAt === highlightEntryAt;
+                return (
+                  <div
+                    key={e.createdAt}
+                    className={`grid grid-cols-12 gap-2 px-6 py-3 border-b border-neutral-900/60 ${highlight ? 'bg-emerald-900/10' : ''}`}
+                  >
+                    <div className="col-span-1 text-neutral-500 font-mono">{idx + 1}</div>
+                    <div className="col-span-4 text-white font-black">{e.playerName}</div>
+                    <div className="col-span-3 text-right text-white font-mono">{Math.floor(e.score).toLocaleString()}</div>
+                    <div className="col-span-2 text-right text-cyan-300 font-mono">{formatDuration(e.survivalTimeMs)}</div>
+                    <div className="col-span-2 text-right text-neutral-300 font-mono">{e.kills}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {gameState === 'PLAYING' && (
           <GameEngine 
             level={level} 
-            onGameOver={handleGameOver} 
-            onVictory={handleVictory}
+            mode={mode}
+            onSessionEnd={handleSessionEnd}
           />
         )}
       </div>
