@@ -25,7 +25,7 @@ const App: React.FC = () => {
       return parsed
         .filter(e => e && typeof e.score === 'number' && typeof e.survivalTimeMs === 'number' && typeof e.kills === 'number' && typeof e.createdAt === 'number')
         .map(e => ({
-          playerName: typeof e.playerName === 'string' ? e.playerName : 'Player',
+          playerName: typeof e.playerName === 'string' ? e.playerName : '玩家',
           score: e.score,
           survivalTimeMs: e.survivalTimeMs,
           kills: e.kills,
@@ -64,7 +64,7 @@ const App: React.FC = () => {
 
     if (result.mode === 'ENDLESS') {
       const entry: LeaderboardEntry = {
-        playerName: `Player${Math.floor(100 + Math.random() * 900)}`,
+        playerName: `玩家${Math.floor(100 + Math.random() * 900)}`,
         score: result.score,
         survivalTimeMs: result.survivalTimeMs,
         kills: result.kills,
@@ -117,7 +117,7 @@ const App: React.FC = () => {
             <h1 className="text-6xl font-black text-white mb-2 tracking-tighter italic">
               LANE <span className="text-red-600">SURVIVOR</span>
             </h1>
-            <p className="text-neutral-500 mb-8 uppercase tracking-[0.3em] font-bold">Zombie Highway Apocalypse</p>
+            <p className="text-neutral-500 mb-8 uppercase tracking-[0.3em] font-bold">僵尸公路末日</p>
             
             <div className="flex flex-col gap-4 w-64">
               <button 
@@ -126,7 +126,7 @@ const App: React.FC = () => {
               >
                 <div className="relative z-10 flex items-center justify-center gap-2">
                   <i className="fa-solid fa-play"></i>
-                  {level > 1 ? `CONTINUE SECTOR ${level}` : 'START MISSION'}
+                  {level > 1 ? `继续第${level}区` : '开始任务'}
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-orange-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </button>
@@ -137,7 +137,7 @@ const App: React.FC = () => {
               >
                 <div className="relative z-10 flex items-center justify-center gap-2">
                   <i className="fa-solid fa-infinity"></i>
-                  ENDLESS MODE
+                  无尽模式
                 </div>
                 <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </button>
@@ -151,22 +151,22 @@ const App: React.FC = () => {
               >
                 <div className="relative z-10 flex items-center justify-center gap-2">
                   <i className="fa-solid fa-trophy"></i>
-                  LEADERBOARD
+                  排行榜
                 </div>
               </button>
               
               <div className="bg-neutral-800 rounded-lg p-4 text-left border border-neutral-700">
-                <div className="text-neutral-400 text-xs uppercase font-bold mb-1">Survivor Intel</div>
+                <div className="text-neutral-400 text-xs uppercase font-bold mb-1">幸存者情报</div>
                 <div className="text-white flex justify-between items-center">
-                  <span>Current Sector:</span>
+                  <span>当前区段：</span>
                   <span className="font-mono text-red-500">{level}</span>
                 </div>
                 <div className="text-white flex justify-between items-center">
-                  <span>Total Killpoints:</span>
+                  <span>总得分：</span>
                   <span className="font-mono text-blue-500">{Math.floor(totalScore).toLocaleString()}</span>
                 </div>
                 <div className="text-white flex justify-between items-center mt-2">
-                  <span>Endless Best:</span>
+                  <span>无尽最高：</span>
                   <span className="font-mono text-cyan-400">
                     {endlessLeaderboard.length > 0 ? Math.floor(endlessLeaderboard[0].score).toLocaleString() : '--'}
                   </span>
@@ -177,15 +177,15 @@ const App: React.FC = () => {
             <div className="mt-12 grid grid-cols-3 gap-8 text-neutral-400">
               <div className="flex flex-col items-center">
                 <i className="fa-solid fa-keyboard text-2xl mb-2"></i>
-                <span className="text-xs uppercase font-bold">A / D to move</span>
+                <span className="text-xs uppercase font-bold">A/D 移动</span>
               </div>
               <div className="flex flex-col items-center">
                 <i className="fa-solid fa-crosshairs text-2xl mb-2"></i>
-                <span className="text-xs uppercase font-bold">Auto Fire</span>
+                <span className="text-xs uppercase font-bold">自动射击</span>
               </div>
               <div className="flex flex-col items-center">
                 <i className="fa-solid fa-shield-halved text-2xl mb-2"></i>
-                <span className="text-xs uppercase font-bold">Dodge Obstacles</span>
+                <span className="text-xs uppercase font-bold">躲避障碍</span>
               </div>
             </div>
           </div>
@@ -196,7 +196,7 @@ const App: React.FC = () => {
             {isLoadingIntel ? (
               <div className="flex flex-col items-center">
                 <div className="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                <p className="text-red-500 font-mono animate-pulse uppercase tracking-widest">Intercepting Mission Intel...</p>
+                <p className="text-red-500 font-mono animate-pulse uppercase tracking-widest">正在截获任务情报...</p>
               </div>
             ) : (
               <div className="max-w-xl animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -205,7 +205,7 @@ const App: React.FC = () => {
                 <p className="text-neutral-400 mb-8 leading-relaxed font-mono">"{intel?.intel}"</p>
                 
                 <div className="bg-neutral-800/50 p-6 rounded-xl border border-neutral-700 mb-8">
-                  <div className="text-red-500 text-xs font-bold uppercase tracking-widest mb-2">Target identified</div>
+                  <div className="text-red-500 text-xs font-bold uppercase tracking-widest mb-2">目标已锁定</div>
                   <h3 className="text-2xl font-bold text-white mb-2">{intel?.bossName}</h3>
                   <p className="text-neutral-500 text-sm italic">{intel?.bossDescription}</p>
                 </div>
@@ -214,7 +214,7 @@ const App: React.FC = () => {
                   onClick={() => setGameState('PLAYING')}
                   className="px-10 py-4 bg-white text-black font-black rounded-lg hover:bg-neutral-200 transition-colors uppercase tracking-widest"
                 >
-                  Deploy Now
+                  立即出击
                 </button>
               </div>
             )}
@@ -225,26 +225,26 @@ const App: React.FC = () => {
           <div className="p-10 min-h-[600px]">
             <div className="flex items-center justify-between mb-8">
               <div className="text-left">
-                <div className="text-neutral-500 text-xs uppercase tracking-[0.3em] font-black">Top Survivors</div>
-                <h2 className="text-4xl font-black text-white italic tracking-tighter">ENDLESS LEADERBOARD</h2>
+                <div className="text-neutral-500 text-xs uppercase tracking-[0.3em] font-black">顶尖幸存者</div>
+                <h2 className="text-4xl font-black text-white italic tracking-tighter">无尽排行榜</h2>
               </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => {
-                    const ok = window.confirm('Clear leaderboard?');
+                    const ok = window.confirm('清空排行榜？');
                     if (!ok) return;
                     setHighlightEntryAt(null);
                     saveEndlessLeaderboard([]);
                   }}
                   className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-black rounded-lg border border-neutral-700"
                 >
-                  Clear
+                  清空
                 </button>
                 <button
                   onClick={() => setGameState('MENU')}
                   className="px-4 py-2 bg-white hover:bg-neutral-200 text-black font-black rounded-lg"
                 >
-                  Back
+                  返回
                 </button>
               </div>
             </div>
@@ -252,14 +252,14 @@ const App: React.FC = () => {
             <div className="bg-neutral-950/40 border border-neutral-800 rounded-2xl overflow-hidden">
               <div className="grid grid-cols-12 gap-2 px-6 py-3 text-[10px] uppercase tracking-[0.25em] font-black text-neutral-500 border-b border-neutral-800">
                 <div className="col-span-1">#</div>
-                <div className="col-span-4">Player</div>
-                <div className="col-span-3 text-right">Score</div>
-                <div className="col-span-2 text-right">Survival</div>
-                <div className="col-span-2 text-right">Kills</div>
+                <div className="col-span-4">玩家</div>
+                <div className="col-span-3 text-right">得分</div>
+                <div className="col-span-2 text-right">生存</div>
+                <div className="col-span-2 text-right">击杀</div>
               </div>
 
               {endlessLeaderboard.length === 0 && (
-                <div className="px-6 py-10 text-center text-neutral-500 font-mono">No records yet. Run endless mode.</div>
+                <div className="px-6 py-10 text-center text-neutral-500 font-mono">暂无记录，去玩无尽模式。</div>
               )}
 
               {endlessLeaderboard.map((e, idx) => {

@@ -20,56 +20,56 @@ export async function getMissionIntel(level: number) {
   const rng = makeRng(lvl * 2654435761);
 
   const sectorThemes = [
-    'Dead Road',
-    'Wreckage Mile',
-    'Fogline Expressway',
-    'Blacktop Inferno',
-    'Overpass Graveyard',
-    'Neon Crashway',
-    'Saltwind Highway',
-    'Oil-Slick Run'
+    '死亡公路',
+    '残骸里程',
+    '雾线高架',
+    '黑路炼狱',
+    '立交墓场',
+    '霓虹车祸带',
+    '盐风高速',
+    '油膜疾行'
   ] as const;
 
   const hazards = [
-    'abandoned semis',
-    'burning wrecks',
-    'collapsed guardrails',
-    'oil slicks',
-    'chain-reaction pileups',
-    'cracked asphalt',
-    'fog pockets',
-    'dead headlights'
+    '废弃货车',
+    '燃烧残骸',
+    '坍塌护栏',
+    '油污路面',
+    '连环追尾',
+    '龟裂沥青',
+    '浓雾团',
+    '熄灭车灯'
   ] as const;
 
   const directives = [
-    'Stay in motion.',
-    'Keep your lanes clean.',
-    'Let the horde bunch up, then shred it.',
-    'Watch for obstacles at high speed.',
-    'Save your health for the boss push.',
-    'Don’t chase loot into the wrong lane.'
+    '保持移动。',
+    '清理车道。',
+    '等尸群聚拢再清场。',
+    '高速注意障碍。',
+    '留血量打首领。',
+    '别为补给冲错车道。'
   ] as const;
 
   const bossTitles = [
-    'The Behemoth',
-    'The Siren',
-    'The Warden',
-    'The Highway King',
-    'The Split-Jaw',
-    'The Pit Runner',
-    'The Bloodhound',
-    'The Rampager'
+    '巨躯者',
+    '海妖',
+    '看守者',
+    '公路之王',
+    '裂颚',
+    '深坑奔袭者',
+    '血猎犬',
+    '狂暴者'
   ] as const;
 
   const bossTraits = [
-    'armored with twisted steel plating',
-    'fast enough to cross lanes in a blink',
-    'dragging a chain of wreckage behind it',
-    'screaming loud enough to draw the entire horde',
-    'pulsing with unstable mutation heat',
-    'covered in glass shards and rebar spines',
-    'hunting by sound through the fog',
-    'too angry to die'
+    '披着扭曲钢板护甲',
+    '快到一眨眼就能换道',
+    '身后拖着一串残骸',
+    '嘶吼足以召来整片尸潮',
+    '体内涌动着不稳定变异热',
+    '满身玻璃碎片与钢筋尖刺',
+    '在雾里靠声音狩猎',
+    '愤怒到不肯死'
   ] as const;
 
   const tier = Math.floor((lvl - 1) / 5) + 1;
@@ -79,9 +79,9 @@ export async function getMissionIntel(level: number) {
   const bossName = pick(rng, bossTitles);
   const trait = pick(rng, bossTraits);
 
-  const title = `Sector ${lvl}: ${theme}`;
-  const intel = `Tier ${tier} corridor. Expect ${hazard} and lane pressure from dense runners. ${directive}`;
-  const bossDescription = `A high-speed apex infected, ${trait}. It blocks the route ahead and punishes hesitation.`;
+  const title = `第${lvl}区：${theme}`;
+  const intel = `第${tier}级路段。警惕${hazard}，密集奔袭者会挤压车道。${directive}`;
+  const bossDescription = `高速首领感染体，${trait}。它封锁前路，犹豫必付代价。`;
 
   return { title, intel, bossName, bossDescription };
 }

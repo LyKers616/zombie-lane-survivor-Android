@@ -7,7 +7,7 @@ export const BASE_SPEED = 0.5;
 
 export const WEAPON_MAP: Record<WeaponType, WeaponStats> = {
   [WeaponType.HANDGUN]: {
-    name: 'Pistol',
+    name: '手枪',
     damage: 10,
     fireRate: 600,
     bulletSpeed: 2,
@@ -18,7 +18,7 @@ export const WEAPON_MAP: Record<WeaponType, WeaponStats> = {
     critMultiplier: 2
   },
   [WeaponType.SMG]: {
-    name: 'SMG',
+    name: '冲锋枪',
     damage: 10,
     fireRate: 220,
     bulletSpeed: 3,
@@ -29,7 +29,7 @@ export const WEAPON_MAP: Record<WeaponType, WeaponStats> = {
     critMultiplier: 2
   },
   [WeaponType.RIFLE]: {
-    name: 'Assault Rifle',
+    name: '突击步枪',
     damage: 13,
     fireRate: 250,
     bulletSpeed: 3,
@@ -40,7 +40,7 @@ export const WEAPON_MAP: Record<WeaponType, WeaponStats> = {
     critMultiplier: 2
   },
   [WeaponType.MINIGUN]: {
-    name: 'Minigun',
+    name: '加特林',
     damage: 13,
     fireRate: 80,
     bulletSpeed: 4,

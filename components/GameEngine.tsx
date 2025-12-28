@@ -59,6 +59,36 @@ const ENTITY_COLORS: Record<EntityType, string> = {
 
 const WEAPON_TIER: WeaponType[] = [WeaponType.HANDGUN, WeaponType.SMG, WeaponType.RIFLE, WeaponType.MINIGUN];
 
+const getEntitySubLabel = (e: Entity): string | undefined => {
+  if (!e.subType) return undefined;
+
+  if (e.type === EntityType.WEAPON_UPGRADE) {
+    const w = e.subType as WeaponType;
+    const stats = WEAPON_MAP[w];
+    return stats?.name;
+  }
+
+  if (e.type === EntityType.BULLET_UPGRADE) {
+    if (e.subType === 'RATE') return '射速';
+    if (e.subType === 'DMG') return '伤害';
+    if (e.subType === 'FIRE') return '灼烧';
+    return undefined;
+  }
+
+  if (e.type === EntityType.ENERGY) {
+    if (e.subType === 'BATTERY') return '电池';
+    return undefined;
+  }
+
+  if (e.type === EntityType.SKILL_UNLOCK) {
+    if (e.subType.includes('Rage')) return '狂怒核心';
+    if (e.subType.includes('Shield')) return '护盾模块';
+    return '脉冲发射器';
+  }
+
+  return undefined;
+};
+
 const getNextWeapon = (w: WeaponType): WeaponType | null => {
   const idx = WEAPON_TIER.indexOf(w);
   if (idx < 0 || idx >= WEAPON_TIER.length - 1) return null;
@@ -760,7 +790,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         distanceRef.current = next;
         if (modeRuntime.allowBoss && next >= TRACK_LENGTH) {
           setGameStatus(GameStatus.BOSS_FIGHT);
-          setBoss({ name: "COMMANDER MUTANT", hp: 1500 * difficulty, maxHp: 1500 * difficulty, attacks: 0 });
+          setBoss({ name: "变异指挥官", hp: 1500 * difficulty, maxHp: 1500 * difficulty, attacks: 0 });
           bossAttackTimerRef.current = 0;
           bossAttackCooldownMsRef.current = 1200;
           return TRACK_LENGTH;
@@ -1010,13 +1040,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
           {bossTelegraph.type === 'SUMMON' && (
             <div className="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg border border-emerald-400/40 bg-emerald-900/20 backdrop-blur-sm">
-              <div className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">Infestation Incoming</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.35em] text-emerald-300">尸潮将至</div>
             </div>
           )}
 
           {(bossTelegraph.type === 'SLAM' || bossTelegraph.type === 'BARRAGE') && (
             <div className="absolute top-16 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg border border-red-500/40 bg-red-950/20 backdrop-blur-sm">
-              <div className="text-[10px] font-black uppercase tracking-[0.35em] text-red-300">Lane Strike</div>
+              <div className="text-[10px] font-black uppercase tracking-[0.35em] text-red-300">车道打击</div>
             </div>
           )}
         </div>
@@ -1103,7 +1133,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           <i className={`${ENTITY_ICONS[e.type]} text-2xl text-white drop-shadow-md`}></i>
           {e.subType && (
             <span className="absolute -bottom-4 text-[9px] font-black text-white bg-black/80 px-1.5 py-0.5 rounded border border-white/10 uppercase tracking-tighter">
-              {e.subType}
+              {getEntitySubLabel(e) ?? e.subType}
             </span>
           )}
         </div>
@@ -1114,7 +1144,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="absolute top-12 left-1/2 -translate-x-1/2 w-4/5 max-w-lg z-40">
           <div className="flex justify-between items-end mb-1">
             <span className="text-red-500 font-black text-xs tracking-widest uppercase italic">{boss.name}</span>
-            <span className="text-white font-mono text-sm">{Math.ceil(boss.hp)} HP</span>
+            <span className="text-white font-mono text-sm">{Math.ceil(boss.hp)} 血量</span>
           </div>
           <div className="w-full h-5 bg-black/60 rounded-full border-2 border-red-500/40 p-0.5 shadow-2xl">
             <div className="h-full bg-gradient-to-r from-red-700 to-red-500 rounded-full transition-all" style={{ width: `${(boss.hp / boss.maxHp) * 100}%` }}></div>
@@ -1211,7 +1241,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">HP</span>
+              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">血</span>
               <span className="text-[11px] font-black text-white">{Math.ceil(playerHp)}%</span>
             </div>
             <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
@@ -1224,7 +1254,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
           <div className="flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest">EN</span>
+              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest">能</span>
               <span className="text-[11px] font-black text-white">{Math.floor(energy.current)}/{energy.max}</span>
             </div>
             <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
@@ -1236,7 +1266,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           </div>
 
           <div className="text-right">
-            <div className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">Score</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">得分</div>
             <div className="text-lg font-black text-white font-mono tracking-tighter">{Math.floor(score).toLocaleString()}</div>
           </div>
         </div>
@@ -1246,7 +1276,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       <div className="absolute bottom-[calc(7rem+env(safe-area-inset-bottom))] md:bottom-6 left-4 md:left-8 right-4 md:right-8 hidden md:flex flex-col md:flex-row justify-between items-stretch md:items-end gap-3 md:gap-0 pointer-events-none z-40">
         <div className="w-full md:w-64">
           <div className="flex justify-between items-center mb-1">
-            <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Life Signal</span>
+            <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">生命</span>
             <span className="text-lg font-black text-white">{Math.ceil(playerHp)}%</span>
           </div>
           <div className="w-full h-4 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
@@ -1258,7 +1288,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
           <div className="mt-3">
             <div className="flex justify-between items-center mb-1">
-              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">Energy</span>
+              <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-widest">能量</span>
               <span className="text-xs font-black text-white">{Math.floor(energy.current)}/{energy.max}</span>
             </div>
             <div className="w-full h-3 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
@@ -1303,7 +1333,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         </div>
 
         <div className="md:text-right">
-          <div className="text-neutral-500 text-[10px] font-black uppercase tracking-[0.3em]">Credits</div>
+          <div className="text-neutral-500 text-[10px] font-black uppercase tracking-[0.3em]">得分</div>
           <div className="text-3xl md:text-5xl font-black text-white font-mono tracking-tighter">{Math.floor(score).toLocaleString()}</div>
         </div>
       </div>
@@ -1312,14 +1342,14 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       {gameStatus === GameStatus.GAMEOVER && (
         <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center z-[100] animate-in fade-in duration-500">
           <i className="fa-solid fa-skull text-8xl text-red-600 mb-6 drop-shadow-[0_0_30px_rgba(220,38,38,0.6)]"></i>
-          <h2 className="text-7xl font-black text-red-600 mb-2 italic tracking-tighter uppercase">Terminated</h2>
-          <p className="text-xl text-neutral-500 mb-10 tracking-[0.3em]">Horde consumption complete.</p>
+          <h2 className="text-7xl font-black text-red-600 mb-2 italic tracking-tighter uppercase">阵亡</h2>
+          <p className="text-xl text-neutral-500 mb-10 tracking-[0.3em]">尸群吞噬完成。</p>
           <div className="bg-neutral-900 border border-neutral-800 p-8 rounded-2xl text-center mb-10 w-64 shadow-2xl">
-            <div className="text-neutral-500 text-xs uppercase mb-1">Final Score</div>
+            <div className="text-neutral-500 text-xs uppercase mb-1">最终得分</div>
             <div className="text-4xl font-black text-white">{Math.floor(score).toLocaleString()}</div>
             <div className="mt-4 text-xs text-neutral-400 font-mono">
-              <div>Survival: {Math.floor(survivalTimeMs / 1000)}s</div>
-              <div>Kills: {kills}</div>
+              <div>生存：{Math.floor(survivalTimeMs / 1000)}秒</div>
+              <div>击杀：{kills}</div>
             </div>
           </div>
           <button 
@@ -1333,7 +1363,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             })}
             className="px-12 py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl uppercase tracking-widest transition-transform active:scale-95 shadow-lg shadow-red-900/40"
           >
-            Deploy Again
+            再次出击
           </button>
         </div>
       )}
@@ -1341,8 +1371,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       {gameStatus === GameStatus.VICTORY && (
         <div className="absolute inset-0 bg-blue-900/20 backdrop-blur-md flex flex-col items-center justify-center z-[100] animate-in fade-in duration-500">
           <i className="fa-solid fa-medal text-8xl text-yellow-500 mb-6 drop-shadow-[0_0_30px_rgba(234,179,8,0.6)] animate-bounce"></i>
-          <h2 className="text-7xl font-black text-yellow-400 mb-2 tracking-tighter uppercase italic">Road Clear</h2>
-          <p className="text-xl text-blue-100 mb-10 tracking-[0.3em]">Secure the perimeter.</p>
+          <h2 className="text-7xl font-black text-yellow-400 mb-2 tracking-tighter uppercase italic">道路已清</h2>
+          <p className="text-xl text-blue-100 mb-10 tracking-[0.3em]">封锁周边。</p>
           <button 
             onClick={() => onSessionEnd({
               mode: resolvedMode,
@@ -1354,7 +1384,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             })}
             className="px-12 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-black rounded-xl uppercase tracking-widest transition-transform active:scale-95 shadow-lg shadow-yellow-900/40"
           >
-            Next Sector
+            下一关
           </button>
         </div>
       )}
