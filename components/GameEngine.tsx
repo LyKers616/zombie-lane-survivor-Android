@@ -966,6 +966,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     return () => window.removeEventListener('keydown', handleKey);
   }, [tryUseSkill, unlockAudio]);
 
+  const skillSlots = [
+    { id: 'rage' as const, icon: 'fa-solid fa-fire', key: '1/Q' },
+    { id: 'shield' as const, icon: 'fa-solid fa-shield-halved', key: '2/E' },
+    { id: 'aoe' as const, icon: 'fa-solid fa-burst', key: '3/R' }
+  ];
+
   return (
     <div
       className="relative w-full h-[85svh] md:h-[85vh] bg-[#0c0c0c] border-x-8 border-[#1a1a1a] overflow-hidden select-none shadow-inner"
@@ -1080,11 +1086,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       {entities.map(e => (
         <div 
           key={e.id}
-          className={`absolute flex flex-col items-center justify-center rounded-xl border-2 z-20 transition-transform ${ENTITY_COLORS[e.type]}`}
+          className={`absolute flex flex-col items-center justify-center rounded-xl border-2 z-20 ${ENTITY_COLORS[e.type]}`}
           style={{ 
             left: `${(e.lane * 20) + 10}%`, 
             top: `${e.z}%`, 
-            transform: `translate(-50%, -50%) scale(${0.8 + (e.z / 200)})`,
+            transform: `translate(-50%, -50%)`,
             width: `${e.width}px`,
             height: `${e.height}px`
           }}
@@ -1150,6 +1156,37 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           {WEAPON_MAP[weapon].name}
         </div>
       </div>
+
+      <div className="absolute bottom-[calc(6.25rem+env(safe-area-inset-bottom))] left-4 right-4 flex justify-start pointer-events-none z-40 md:hidden">
+        <div className="flex gap-2">
+          {skillSlots.map(slot => {
+            const s = skills[slot.id];
+            const ready = s.unlocked && s.cooldownRemaining <= 0 && energy.current >= s.energyCost;
+            const cdPct = s.cooldownSeconds > 0 ? Math.max(0, Math.min(1, s.cooldownRemaining / s.cooldownSeconds)) : 0;
+            const dim = !s.unlocked || !ready;
+            return (
+              <button
+                key={slot.id}
+                type="button"
+                onPointerDown={() => {
+                  unlockAudio();
+                  tryUseSkill(slot.id);
+                }}
+                className={`relative w-12 h-12 rounded-xl border overflow-hidden pointer-events-auto active:scale-95 ${dim ? 'border-white/10 bg-black/40' : 'border-cyan-400/40 bg-cyan-950/20'}`}
+                style={{ boxShadow: ready ? '0 0 18px rgba(34,211,238,0.25)' : undefined }}
+              >
+                <div className={`absolute inset-0 ${!s.unlocked ? 'bg-black/60' : ''}`}></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <i className={`${slot.icon} text-white ${dim ? 'opacity-40' : 'opacity-90'}`}></i>
+                </div>
+                {s.cooldownRemaining > 0 && (
+                  <div className="absolute inset-0 bg-black/60" style={{ clipPath: `inset(${(1 - cdPct) * 100}% 0 0 0)` }}></div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       </div>
 
       <div
@@ -1170,8 +1207,43 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         ></div>
       </div>
 
+      <div className="absolute top-[calc(0.75rem+env(safe-area-inset-top))] left-3 right-3 z-[55] md:hidden pointer-events-none">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">HP</span>
+              <span className="text-[11px] font-black text-white">{Math.ceil(playerHp)}%</span>
+            </div>
+            <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
+              <div
+                className="h-full rounded-full bg-red-500"
+                style={{ width: `${playerHp}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest">EN</span>
+              <span className="text-[11px] font-black text-white">{Math.floor(energy.current)}/{energy.max}</span>
+            </div>
+            <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-600 to-emerald-400"
+                style={{ width: `${(energy.current / energy.max) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="text-right">
+            <div className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">Score</div>
+            <div className="text-lg font-black text-white font-mono tracking-tighter">{Math.floor(score).toLocaleString()}</div>
+          </div>
+        </div>
+      </div>
+
       {/* HUD Bottom */}
-      <div className="absolute bottom-[calc(7rem+env(safe-area-inset-bottom))] md:bottom-6 left-4 md:left-8 right-4 md:right-8 flex flex-col md:flex-row justify-between items-stretch md:items-end gap-3 md:gap-0 pointer-events-none z-40">
+      <div className="absolute bottom-[calc(7rem+env(safe-area-inset-bottom))] md:bottom-6 left-4 md:left-8 right-4 md:right-8 hidden md:flex flex-col md:flex-row justify-between items-stretch md:items-end gap-3 md:gap-0 pointer-events-none z-40">
         <div className="w-full md:w-64">
           <div className="flex justify-between items-center mb-1">
             <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Life Signal</span>
@@ -1197,11 +1269,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             </div>
 
             <div className="mt-3 flex gap-2">
-              {([
-                { id: 'rage' as const, icon: 'fa-solid fa-fire', key: '1/Q' },
-                { id: 'shield' as const, icon: 'fa-solid fa-shield-halved', key: '2/E' },
-                { id: 'aoe' as const, icon: 'fa-solid fa-burst', key: '3/R' }
-              ]).map(slot => {
+              {skillSlots.map(slot => {
                 const s = skills[slot.id];
                 const ready = s.unlocked && s.cooldownRemaining <= 0 && energy.current >= s.energyCost;
                 const cdPct = s.cooldownSeconds > 0 ? Math.max(0, Math.min(1, s.cooldownRemaining / s.cooldownSeconds)) : 0;
