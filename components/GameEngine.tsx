@@ -95,6 +95,30 @@ const getNextWeapon = (w: WeaponType): WeaponType | null => {
   return WEAPON_TIER[idx + 1];
 };
 
+type Aabb = { minX: number; maxX: number; minY: number; maxY: number };
+
+const aabbIntersects = (a: Aabb, b: Aabb) => {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+};
+
+const insetAabb = (r: Aabb, insetX: number, insetY: number): Aabb => {
+  return {
+    minX: r.minX + insetX,
+    maxX: r.maxX - insetX,
+    minY: r.minY + insetY,
+    maxY: r.maxY - insetY
+  };
+};
+
+const expandAabb = (r: Aabb, padX: number, padY: number): Aabb => {
+  return {
+    minX: r.minX - padX,
+    maxX: r.maxX + padX,
+    minY: r.minY - padY,
+    maxY: r.maxY + padY
+  };
+};
+
 type Particle = {
   id: string;
   x: number;
@@ -214,6 +238,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     speedMult: 1
   });
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+
   const requestRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const lastShotTimeRef = useRef<number>(0);
@@ -274,6 +301,30 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
   useEffect(() => {
     aoePulseRef.current = aoePulse;
   }, [aoePulse]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateSize = () => {
+      const r = el.getBoundingClientRect();
+      containerSizeRef.current = { width: r.width, height: r.height };
+    };
+
+    updateSize();
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => updateSize());
+      ro.observe(el);
+    }
+
+    window.addEventListener('resize', updateSize);
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      if (ro) ro.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     survivalTimeMsRef.current = survivalTimeMs;
@@ -849,11 +900,47 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     // 3. Entity Movement & Player Collision
     setEntities(prevEntities => {
       const nextEntities: Entity[] = [];
+
+      const { width: cw, height: ch } = containerSizeRef.current;
+      const laneWidthPx = cw > 0 ? cw / LANE_COUNT : 0;
+      const playerX = laneWidthPx > 0 ? (currentLaneRef.current + 0.5) * laneWidthPx : 0;
+      const playerBottomY = ch > 0 ? ch * 0.9 : 0;
+      const playerW = 80;
+      const playerH = 96;
+      const playerAabb: Aabb = {
+        minX: playerX - playerW / 2,
+        maxX: playerX + playerW / 2,
+        minY: playerBottomY - playerH,
+        maxY: playerBottomY
+      };
+      const damagePlayerAabb = insetAabb(playerAabb, playerW * 0.18, playerH * 0.12);
+      const pickupPlayerAabb = expandAabb(playerAabb, 10, 8);
+
       for (const e of prevEntities) {
         const nextZ = e.z + entitySpeed * frameFactor * speedMult;
-        
-        // Player is roughly at z=90
-        if (nextZ > 84 && nextZ < 94 && e.lane === currentLaneRef.current) {
+
+        let collided = false;
+        if (cw > 0 && ch > 0) {
+          const ex = (e.lane + 0.5) * laneWidthPx;
+          const ey = (nextZ / 100) * ch;
+          const entityAabb: Aabb = {
+            minX: ex - e.width / 2,
+            maxX: ex + e.width / 2,
+            minY: ey - e.height / 2,
+            maxY: ey + e.height / 2
+          };
+
+          const harmful = e.type === EntityType.ZOMBIE || e.type === EntityType.OBSTACLE;
+          if (harmful) {
+            collided = aabbIntersects(damagePlayerAabb, insetAabb(entityAabb, e.width * 0.12, e.height * 0.12));
+          } else {
+            collided = aabbIntersects(pickupPlayerAabb, expandAabb(entityAabb, 8, 8));
+          }
+        } else {
+          collided = nextZ > 84 && nextZ < 94 && e.lane === currentLaneRef.current;
+        }
+
+        if (collided) {
           if (e.type === EntityType.ZOMBIE || e.type === EntityType.OBSTACLE) {
             tryDamagePlayer(e.type === EntityType.ZOMBIE ? 12 : 25);
           } else if (e.type === EntityType.WEAPON_UPGRADE) {
@@ -1004,6 +1091,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
   return (
     <div
+      ref={containerRef}
       className="relative w-full h-[85svh] md:h-[85vh] bg-[#0c0c0c] border-x-8 border-[#1a1a1a] overflow-hidden select-none shadow-inner"
     >
       <div
@@ -1144,7 +1232,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="absolute top-12 left-1/2 -translate-x-1/2 w-4/5 max-w-lg z-40">
           <div className="flex justify-between items-end mb-1">
             <span className="text-red-500 font-black text-xs tracking-widest uppercase italic">{boss.name}</span>
-            <span className="text-white font-mono text-sm">{Math.ceil(boss.hp)} 血量</span>
+            <span className="text-white font-mono text-sm">{Math.ceil(boss.hp)} HP</span>
           </div>
           <div className="w-full h-5 bg-black/60 rounded-full border-2 border-red-500/40 p-0.5 shadow-2xl">
             <div className="h-full bg-gradient-to-r from-red-700 to-red-500 rounded-full transition-all" style={{ width: `${(boss.hp / boss.maxHp) * 100}%` }}></div>
@@ -1241,7 +1329,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">血</span>
+              <span className="text-[9px] font-black text-red-400 uppercase tracking-widest"><HP></HP></span>
               <span className="text-[11px] font-black text-white">{Math.ceil(playerHp)}%</span>
             </div>
             <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
@@ -1254,7 +1342,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
           <div className="flex-1">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest">能</span>
+              <span className="text-[9px] font-black text-cyan-300 uppercase tracking-widest"><EN></EN></span>
               <span className="text-[11px] font-black text-white">{Math.floor(energy.current)}/{energy.max}</span>
             </div>
             <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
