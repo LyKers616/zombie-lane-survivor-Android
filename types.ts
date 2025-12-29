@@ -47,6 +47,8 @@ export interface Entity {
   width: number;
   height: number;
   subType?: string;
+  burnRemainingMs?: number;
+  burnDps?: number;
 }
 
 export interface Projectile {
@@ -56,6 +58,8 @@ export interface Projectile {
   damage: number;
   color: string;
   isFire?: boolean;
+  burnDps?: number;
+  burnDurationMs?: number;
   xOffset?: number;
   pierce?: boolean;
   critChance?: number;
@@ -69,6 +73,8 @@ export interface Boss {
   hp: number;
   maxHp: number;
   attacks: number;
+  burnRemainingMs?: number;
+  burnDps?: number;
 }
 
 export type SkillId = 'rage' | 'shield' | 'aoe';

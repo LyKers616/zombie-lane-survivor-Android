@@ -131,6 +131,16 @@ type Particle = {
   color: string;
 };
 
+type HitGlow = {
+  id: string;
+  x: number;
+  y: number;
+  life: number;
+  maxLife: number;
+  colorRgb: string;
+  radiusPx: number;
+};
+
 type BossAttackType = 'SLAM' | 'BARRAGE' | 'SUMMON';
 
 type BossTelegraph = {
@@ -223,8 +233,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
   const [boss, setBoss] = useState<Boss | null>(null);
 
   const [particles, setParticles] = useState<Particle[]>([]);
-  const [hitFlash, setHitFlash] = useState(0);
-  const [critFlash, setCritFlash] = useState(0);
+  const [hitGlows, setHitGlows] = useState<HitGlow[]>([]);
   const [shake, setShake] = useState(0);
   const [shakeOffset, setShakeOffset] = useState({ x: 0, y: 0 });
   const [playerHurt, setPlayerHurt] = useState(0);
@@ -234,9 +243,13 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
   const [bulletBuffs, setBulletBuffs] = useState({
     fireRateMult: 1,
     damageMult: 1,
-    isFire: false,
+    burnStacks: 0,
     speedMult: 1
   });
+
+  const BURN_DURATION_MS = 2400;
+  const BURN_BASE_DPS = 6;
+  const BURN_DPS_PER_PICKUP = 4;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   const containerSizeRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -369,18 +382,24 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(1280, now);
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.045);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.005);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, now);
+    filter.Q.setValueAtTime(0.7, now);
 
-    osc.connect(gain);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(980, now);
+    osc.frequency.exponentialRampToValueAtTime(640, now + 0.07);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.07, now + 0.010);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+
+    osc.connect(filter);
+    filter.connect(gain);
     gain.connect(ctx.destination);
 
     osc.start(now);
-    osc.stop(now + 0.08);
+    osc.stop(now + 0.16);
   }, [ensureAudioContext]);
 
   const playHitSound = useCallback((isCrit?: boolean) => {
@@ -400,19 +419,19 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     const gain = ctx.createGain();
     const filter = ctx.createBiquadFilter();
 
-    osc.type = 'square';
-    const f0 = isCrit ? 760 : 520;
-    const f1 = isCrit ? 360 : 240;
+    osc.type = isCrit ? 'triangle' : 'square';
+    const f0 = isCrit ? 640 : 520;
+    const f1 = isCrit ? 260 : 240;
     osc.frequency.setValueAtTime(f0, now);
     osc.frequency.exponentialRampToValueAtTime(f1, now + 0.05);
 
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(isCrit ? 2400 : 1700, now);
+    filter.frequency.setValueAtTime(isCrit ? 1500 : 1700, now);
     filter.Q.setValueAtTime(0.7, now);
 
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(isCrit ? 0.09 : 0.06, now + 0.004);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+    gain.gain.exponentialRampToValueAtTime(isCrit ? 0.06 : 0.06, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
 
     osc.connect(filter);
     filter.connect(gain);
@@ -641,22 +660,40 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
   const addHitParticles = useCallback((x: number, y: number, isFire?: boolean, isCrit?: boolean) => {
     const baseColor = isCrit
-      ? (isFire ? '#ffd1c2' : '#fff6a6')
-      : (isFire ? '#ff3300' : '#ffff00');
+      ? (isFire ? '#ffb3a1' : '#ffcf6a')
+      : (isFire ? '#ff3300' : '#ffe35a');
 
     if (isCrit) {
-      setHitFlash(v => Math.max(v, 0.65));
-      setCritFlash(v => Math.max(v, 0.85));
-      setShake(v => Math.max(v, 0.45));
+      setShake(v => Math.max(v, 0.22));
       playCritSound();
     }
 
+    setHitGlows(prev => {
+      const maxLife = isCrit ? 180 : 140;
+      const radiusPx = isCrit ? 120 : 95;
+      const colorRgb = isCrit
+        ? (isFire ? '255,120,90' : '255,184,74')
+        : (isFire ? '255,70,40' : '255,227,90');
+
+      const next = [...prev, {
+        id: Math.random().toString(36).substr(2, 9),
+        x,
+        y,
+        life: maxLife,
+        maxLife,
+        colorRgb,
+        radiusPx
+      }];
+
+      return next.length > 12 ? next.slice(next.length - 12) : next;
+    });
+
     setParticles(prev => {
       const next = [...prev];
-      const count = isCrit ? 22 : 10;
+      const count = isCrit ? 14 : 10;
       for (let i = 0; i < count; i++) {
         const size = 2 + Math.random() * 5;
-        const maxLife = (isCrit ? 220 : 140) + Math.random() * (isCrit ? 220 : 170);
+        const maxLife = (isCrit ? 150 : 140) + Math.random() * (isCrit ? 170 : 170);
         next.push({
           id: Math.random().toString(36).substr(2, 9),
           x: x + (Math.random() - 0.5) * 2,
@@ -677,9 +714,23 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     setPlayerHp(h => {
       const newHp = h - amount;
       if (newHp < h) {
-        setHitFlash(1);
         setShake(1);
         setPlayerHurt(1);
+        setHitGlows(prev => {
+          const maxLife = 170;
+          const radiusPx = 120;
+          const colorRgb = '255,70,70';
+          const next = [...prev, {
+            id: Math.random().toString(36).substr(2, 9),
+            x: (currentLaneRef.current * 20) + 10,
+            y: 90,
+            life: maxLife,
+            maxLife,
+            colorRgb,
+            radiusPx
+          }];
+          return next.length > 12 ? next.slice(next.length - 12) : next;
+        });
         playHurtSound();
       }
       if (newHp <= 0) setGameStatus(GameStatus.GAMEOVER);
@@ -718,7 +769,6 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           }
         };
       });
-      setHitFlash(1);
       setShake(1);
       addHitParticles((currentLaneRef.current * 20) + 10, 90, true);
       playHurtSound();
@@ -1006,8 +1056,16 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
     if (gameStatusRef.current === GameStatus.GAMEOVER || gameStatusRef.current === GameStatus.VICTORY) return;
 
-    setHitFlash(v => (v > 0 ? Math.max(0, v - deltaTime / 120) : v));
-    setCritFlash(v => (v > 0 ? Math.max(0, v - deltaTime / 90) : v));
+    setHitGlows(prev => {
+      if (prev.length === 0) return prev;
+      const next: HitGlow[] = [];
+      for (const g of prev) {
+        const life = g.life - deltaTime;
+        if (life <= 0) continue;
+        next.push({ ...g, life });
+      }
+      return next;
+    });
     setAoePulse(p => {
       if (!p) return p;
       const next = p.remainingMs - deltaTime;
@@ -1135,13 +1193,17 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       const rageActive = skillsRef.current.rage.activeRemaining > 0;
       const newShots: Projectile[] = [];
       const createShot = (baseOffset: number, spreadJitter: number) => {
+        const hasBurn = bulletBuffs.burnStacks > 0;
+        const burnDps = hasBurn ? (BURN_BASE_DPS + (bulletBuffs.burnStacks - 1) * BURN_DPS_PER_PICKUP) : 0;
         newShots.push({
           id: Math.random().toString(36).substr(2, 9),
           lane: currentLaneRef.current,
           z: 85,
           damage: stats.damage * bulletBuffs.damageMult,
-          color: bulletBuffs.isFire ? '#ff3300' : '#ffff00',
-          isFire: bulletBuffs.isFire,
+          color: hasBurn ? '#ff4a2a' : '#ffff00',
+          isFire: hasBurn,
+          burnDps: hasBurn ? burnDps : undefined,
+          burnDurationMs: hasBurn ? BURN_DURATION_MS : undefined,
           xOffset: baseOffset + spreadJitter,
           pierce: stats.pierce,
           critChance: stats.critChance,
@@ -1169,6 +1231,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     setEntities(prevEntities => {
       const nextEntities: Entity[] = [];
 
+      const burnDt = dtSeconds;
+
       const { width: cw, height: ch } = containerSizeRef.current;
       const laneWidthPx = cw > 0 ? cw / LANE_COUNT : 0;
       const playerX = laneWidthPx > 0 ? (currentLaneRef.current + 0.5) * laneWidthPx : 0;
@@ -1195,57 +1259,78 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         : pickupPlayerAabb;
 
       for (const e of prevEntities) {
-        const nextZ = e.z + entitySpeed * frameFactor * speedMult;
+        let cur: Entity = e;
+
+        if (cur.type === EntityType.ZOMBIE && (cur.burnRemainingMs ?? 0) > 0 && (cur.burnDps ?? 0) > 0) {
+          const burnDamage = (cur.burnDps ?? 0) * burnDt;
+          const nextBurnRemainingMs = Math.max(0, (cur.burnRemainingMs ?? 0) - deltaTime);
+          const nextHp = cur.hp - burnDamage;
+          if (nextHp <= 0) {
+            playKillSound('small');
+            setScore(s => s + 25);
+            setKills(v => v + 1);
+            gainEnergy(ENERGY_GAIN_PER_KILL);
+            continue;
+          }
+          cur = {
+            ...cur,
+            hp: nextHp,
+            burnRemainingMs: nextBurnRemainingMs,
+            burnDps: nextBurnRemainingMs > 0 ? cur.burnDps : 0
+          };
+        }
+
+        const nextZ = cur.z + entitySpeed * frameFactor * speedMult;
 
         let collided = false;
         if (cw > 0 && ch > 0) {
-          const ex = (e.lane + 0.5) * laneWidthPx;
+          const ex = (cur.lane + 0.5) * laneWidthPx;
           const ey = (nextZ / 100) * ch;
           const entityAabb: Aabb = {
-            minX: ex - e.width / 2,
-            maxX: ex + e.width / 2,
-            minY: ey - e.height / 2,
-            maxY: ey + e.height / 2
+            minX: ex - cur.width / 2,
+            maxX: ex + cur.width / 2,
+            minY: ey - cur.height / 2,
+            maxY: ey + cur.height / 2
           };
 
-          const harmful = e.type === EntityType.ZOMBIE || e.type === EntityType.OBSTACLE;
+          const harmful = cur.type === EntityType.ZOMBIE || cur.type === EntityType.OBSTACLE;
           if (harmful) {
-            collided = e.lane === currentLaneRef.current && aabbIntersects(damagePlayerAabb, insetAabb(entityAabb, e.width * 0.12, e.height * 0.12));
+            collided = cur.lane === currentLaneRef.current && aabbIntersects(damagePlayerAabb, insetAabb(entityAabb, cur.width * 0.12, cur.height * 0.12));
           } else {
-            collided = e.lane === currentLaneRef.current && aabbIntersects(pickupPlayerAabbClamped, expandAabb(entityAabb, 6, 6));
+            collided = cur.lane === currentLaneRef.current && aabbIntersects(pickupPlayerAabbClamped, expandAabb(entityAabb, 6, 6));
           }
         } else {
-          collided = nextZ > 84 && nextZ < 94 && e.lane === currentLaneRef.current;
+          collided = nextZ > 84 && nextZ < 94 && cur.lane === currentLaneRef.current;
         }
 
         if (collided) {
-          if (e.type === EntityType.ZOMBIE || e.type === EntityType.OBSTACLE) {
-            tryDamagePlayer(e.type === EntityType.ZOMBIE ? 12 : 25);
-          } else if (e.type === EntityType.WEAPON_UPGRADE) {
+          if (cur.type === EntityType.ZOMBIE || cur.type === EntityType.OBSTACLE) {
+            tryDamagePlayer(cur.type === EntityType.ZOMBIE ? 12 : 25);
+          } else if (cur.type === EntityType.WEAPON_UPGRADE) {
             const nextWeapon = getNextWeapon(weapon);
-            if (nextWeapon && e.subType === nextWeapon) {
+            if (nextWeapon && cur.subType === nextWeapon) {
               setWeapon(nextWeapon);
               setScore(s => s + 100);
             }
             playPickupSound('power');
-          } else if (e.type === EntityType.BULLET_UPGRADE) {
+          } else if (cur.type === EntityType.BULLET_UPGRADE) {
             setBulletBuffs(b => ({
               ...b,
-              fireRateMult: e.subType === 'RATE' ? b.fireRateMult + 0.06 : b.fireRateMult,
-              damageMult: e.subType === 'DMG' ? b.damageMult + 0.08 : b.damageMult,
-              isFire: e.subType === 'FIRE' ? true : b.isFire
+              fireRateMult: cur.subType === 'RATE' ? b.fireRateMult + 0.06 : b.fireRateMult,
+              damageMult: cur.subType === 'DMG' ? b.damageMult + 0.08 : b.damageMult,
+              burnStacks: cur.subType === 'FIRE' ? (b.burnStacks + 1) : b.burnStacks
             }));
             setScore(s => s + 50);
             playPickupSound('power');
-          } else if (e.type === EntityType.HEAL) {
+          } else if (cur.type === EntityType.HEAL) {
             setPlayerHp(h => Math.min(100, h + 30));
             playPickupSound('good');
-          } else if (e.type === EntityType.ENERGY) {
+          } else if (cur.type === EntityType.ENERGY) {
             gainEnergy(25);
             setScore(s => s + 30);
             playPickupSound('good');
-          } else if (e.type === EntityType.SKILL_UNLOCK) {
-            const label = e.subType ?? '';
+          } else if (cur.type === EntityType.SKILL_UNLOCK) {
+            const label = cur.subType ?? '';
             const skillId: SkillId = label.includes('Rage') ? 'rage' : label.includes('Shield') ? 'shield' : 'aoe';
             unlockSkill(skillId);
             setScore(s => s + 75);
@@ -1256,11 +1341,28 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         }
 
         if (nextZ < 110) {
-          nextEntities.push({ ...e, z: nextZ });
+          nextEntities.push({ ...cur, z: nextZ });
         }
       }
       return nextEntities;
     });
+
+    if (gameStatusRef.current === GameStatus.BOSS_FIGHT) {
+      setBoss(b => {
+        if (!b) return b;
+        if ((b.burnRemainingMs ?? 0) <= 0 || (b.burnDps ?? 0) <= 0) return b;
+        const nextBurnRemainingMs = Math.max(0, (b.burnRemainingMs ?? 0) - deltaTime);
+        const burnDamage = (b.burnDps ?? 0) * dtSeconds;
+        const nextHp = b.hp - burnDamage;
+        if (nextHp <= 0) setGameStatus(GameStatus.VICTORY);
+        return {
+          ...b,
+          hp: nextHp,
+          burnRemainingMs: nextBurnRemainingMs,
+          burnDps: nextBurnRemainingMs > 0 ? b.burnDps : 0
+        };
+      });
+    }
 
     // 4. Projectile Movement & Combat
     setProjectiles(prevProjs => {
@@ -1299,6 +1401,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
               .map(e => {
                 if (e.id !== hitTarget!.id) return e;
                 const newHp = e.hp - dmg;
+                if (p.burnDps && (p.burnDurationMs ?? 0) > 0) {
+                  const nextBurnRemainingMs = Math.max(e.burnRemainingMs ?? 0, p.burnDurationMs ?? 0);
+                  const nextBurnDps = Math.max(e.burnDps ?? 0, p.burnDps ?? 0);
+                  return { ...e, hp: newHp, burnRemainingMs: nextBurnRemainingMs, burnDps: nextBurnDps };
+                }
                 return { ...e, hp: newHp };
               })
               .filter(e => e.hp > 0);
@@ -1322,6 +1429,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             const dmg = isCrit ? p.damage * critMultiplier : p.damage;
             const newHp = b.hp - dmg;
             if (newHp <= 0) setGameStatus(GameStatus.VICTORY);
+            if (p.burnDps && (p.burnDurationMs ?? 0) > 0) {
+              const nextBurnRemainingMs = Math.max(b.burnRemainingMs ?? 0, p.burnDurationMs ?? 0);
+              const nextBurnDps = Math.max(b.burnDps ?? 0, p.burnDps ?? 0);
+              return { ...b, hp: newHp, burnRemainingMs: nextBurnRemainingMs, burnDps: nextBurnDps };
+            }
             return { ...b, hp: newHp };
           });
           hit = true;
@@ -1426,6 +1538,27 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           )}
         </div>
       )}
+
+      {hitGlows.map(g => {
+        const t = Math.max(0, Math.min(1, g.life / g.maxLife));
+        const alpha = 0.55 * t * t;
+        return (
+          <div
+            key={g.id}
+            className="absolute pointer-events-none z-[25]"
+            style={{
+              left: `${g.x}%`,
+              top: `${g.y}%`,
+              width: `${g.radiusPx * 2}px`,
+              height: `${g.radiusPx * 2}px`,
+              transform: 'translate(-50%, -50%)',
+              background: `radial-gradient(circle, rgba(${g.colorRgb},${alpha}) 0%, rgba(${g.colorRgb},${alpha * 0.35}) 35%, rgba(${g.colorRgb},0) 72%)`,
+              filter: 'blur(2px)',
+              mixBlendMode: 'screen'
+            }}
+          ></div>
+        );
+      })}
 
       {particles.map(p => (
         <div
@@ -1593,16 +1726,6 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         </div>
       </div>
       </div>
-
-      <div
-        className="absolute inset-0 pointer-events-none z-[60]"
-        style={{ backgroundColor: '#ff0000', opacity: Math.max(0, Math.min(1, hitFlash)) * 0.18 }}
-      ></div>
-
-      <div
-        className="absolute inset-0 pointer-events-none z-[61]"
-        style={{ backgroundColor: '#ffd84a', opacity: Math.max(0, Math.min(1, critFlash)) * 0.14 }}
-      ></div>
 
       {/* Distance Progress */}
       <div className="absolute top-0 left-0 w-full h-3 bg-black/80 z-50">
