@@ -915,6 +915,16 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       };
       const damagePlayerAabb = insetAabb(playerAabb, playerW * 0.18, playerH * 0.12);
       const pickupPlayerAabb = expandAabb(playerAabb, 10, 8);
+      const laneMinX = laneWidthPx > 0 ? currentLaneRef.current * laneWidthPx : 0;
+      const laneMaxX = laneWidthPx > 0 ? (currentLaneRef.current + 1) * laneWidthPx : 0;
+      const pickupLaneInsetX = 6;
+      const pickupPlayerAabbClamped: Aabb = laneWidthPx > 0
+        ? {
+            ...pickupPlayerAabb,
+            minX: Math.max(pickupPlayerAabb.minX, laneMinX + pickupLaneInsetX),
+            maxX: Math.min(pickupPlayerAabb.maxX, laneMaxX - pickupLaneInsetX)
+          }
+        : pickupPlayerAabb;
 
       for (const e of prevEntities) {
         const nextZ = e.z + entitySpeed * frameFactor * speedMult;
@@ -932,9 +942,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
           const harmful = e.type === EntityType.ZOMBIE || e.type === EntityType.OBSTACLE;
           if (harmful) {
-            collided = aabbIntersects(damagePlayerAabb, insetAabb(entityAabb, e.width * 0.12, e.height * 0.12));
+            collided = e.lane === currentLaneRef.current && aabbIntersects(damagePlayerAabb, insetAabb(entityAabb, e.width * 0.12, e.height * 0.12));
           } else {
-            collided = aabbIntersects(pickupPlayerAabb, expandAabb(entityAabb, 8, 8));
+            collided = e.lane === currentLaneRef.current && aabbIntersects(pickupPlayerAabbClamped, expandAabb(entityAabb, 6, 6));
           }
         } else {
           collided = nextZ > 84 && nextZ < 94 && e.lane === currentLaneRef.current;
