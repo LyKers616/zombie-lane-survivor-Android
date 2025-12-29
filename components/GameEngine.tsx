@@ -255,6 +255,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
   const entitiesRef = useRef<Entity[]>(entities);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const lastCritSoundAtRef = useRef<number>(0);
+  const lastHitSoundAtRef = useRef<number>(0);
+  const lastHurtSoundAtRef = useRef<number>(0);
+  const lastPickupSoundAtRef = useRef<number>(0);
+  const lastKillSoundAtRef = useRef<number>(0);
+  const lastSkillSoundAtRef = useRef<number>(0);
+  const lastTelegraphSoundAtRef = useRef<number>(0);
   const aoePulseRef = useRef<{ remainingMs: number; durationMs: number; laneCenter: number } | null>(null);
 
   // Use refs for values needed inside the animation frame but outside React state updates
@@ -377,6 +383,262 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     osc.stop(now + 0.08);
   }, [ensureAudioContext]);
 
+  const playHitSound = useCallback((isCrit?: boolean) => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+
+    const nowMs = performance.now();
+    if (nowMs - lastHitSoundAtRef.current < 60) return;
+    lastHitSoundAtRef.current = nowMs;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => undefined);
+    }
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    osc.type = 'square';
+    const f0 = isCrit ? 760 : 520;
+    const f1 = isCrit ? 360 : 240;
+    osc.frequency.setValueAtTime(f0, now);
+    osc.frequency.exponentialRampToValueAtTime(f1, now + 0.05);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(isCrit ? 2400 : 1700, now);
+    filter.Q.setValueAtTime(0.7, now);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(isCrit ? 0.09 : 0.06, now + 0.004);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.07);
+  }, [ensureAudioContext]);
+
+  const playHurtSound = useCallback(() => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+
+    const nowMs = performance.now();
+    if (nowMs - lastHurtSoundAtRef.current < 160) return;
+    lastHurtSoundAtRef.current = nowMs;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => undefined);
+    }
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(170, now);
+    osc.frequency.exponentialRampToValueAtTime(85, now + 0.10);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(720, now);
+    filter.Q.setValueAtTime(0.9, now);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.12, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.15);
+  }, [ensureAudioContext]);
+
+  const playPickupSound = useCallback((variant?: 'good' | 'power') => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+
+    const nowMs = performance.now();
+    if (nowMs - lastPickupSoundAtRef.current < 90) return;
+    lastPickupSoundAtRef.current = nowMs;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => undefined);
+    }
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    const base = variant === 'power' ? 880 : 740;
+    osc.frequency.setValueAtTime(base, now);
+    osc.frequency.exponentialRampToValueAtTime(base * 1.8, now + 0.07);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.07, now + 0.003);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.095);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.10);
+  }, [ensureAudioContext]);
+
+  const playKillSound = useCallback((variant?: 'small' | 'big') => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+
+    const nowMs = performance.now();
+    if (nowMs - lastKillSoundAtRef.current < 110) return;
+    lastKillSoundAtRef.current = nowMs;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => undefined);
+    }
+
+    const now = ctx.currentTime;
+    const oscA = ctx.createOscillator();
+    const oscB = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    const isBig = variant === 'big';
+    oscA.type = 'triangle';
+    oscB.type = 'sine';
+
+    const f0 = isBig ? 520 : 680;
+    const f1 = isBig ? 180 : 260;
+    oscA.frequency.setValueAtTime(f0, now);
+    oscA.frequency.exponentialRampToValueAtTime(f1, now + 0.11);
+    oscB.frequency.setValueAtTime(f0 * 1.5, now);
+    oscB.frequency.exponentialRampToValueAtTime(f1 * 1.2, now + 0.11);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(isBig ? 1400 : 1900, now);
+    filter.Q.setValueAtTime(0.8, now);
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(isBig ? 0.06 : 0.045, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+
+    oscA.connect(filter);
+    oscB.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    oscA.start(now);
+    oscB.start(now);
+    oscA.stop(now + 0.17);
+    oscB.stop(now + 0.17);
+  }, [ensureAudioContext]);
+
+  const playSkillSound = useCallback((skillId: SkillId) => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+
+    const nowMs = performance.now();
+    if (nowMs - lastSkillSoundAtRef.current < 200) return;
+    lastSkillSoundAtRef.current = nowMs;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => undefined);
+    }
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
+
+    if (skillId === 'rage') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(280, now);
+      osc.frequency.exponentialRampToValueAtTime(720, now + 0.12);
+      filter.type = 'highpass';
+      filter.frequency.setValueAtTime(380, now);
+      filter.Q.setValueAtTime(0.6, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.058, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+      osc.connect(filter);
+      filter.connect(gain);
+    } else if (skillId === 'shield') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(390, now + 0.14);
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(1400, now);
+      filter.Q.setValueAtTime(0.7, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.055, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.20);
+      osc.connect(filter);
+      filter.connect(gain);
+    } else {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(610, now);
+      osc.frequency.exponentialRampToValueAtTime(980, now + 0.06);
+      osc.frequency.exponentialRampToValueAtTime(480, now + 0.16);
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(950, now);
+      filter.Q.setValueAtTime(1.2, now);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.06, now + 0.006);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+      osc.connect(filter);
+      filter.connect(gain);
+    }
+
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.22);
+  }, [ensureAudioContext]);
+
+  const playTelegraphSound = useCallback((type: BossAttackType) => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+
+    const nowMs = performance.now();
+    if (nowMs - lastTelegraphSoundAtRef.current < 320) return;
+    lastTelegraphSoundAtRef.current = nowMs;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => undefined);
+    }
+
+    const now = ctx.currentTime;
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(240, now);
+    filter.Q.setValueAtTime(0.7, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.055, now + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.20);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    const pulses = type === 'SUMMON' ? [0, 0.07, 0.14] : [0, 0.11];
+    const base = type === 'SUMMON' ? 620 : 740;
+
+    for (let i = 0; i < pulses.length; i++) {
+      const t0 = now + pulses[i];
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(base + i * 90, t0);
+      osc.frequency.exponentialRampToValueAtTime((base + i * 90) * 0.92, t0 + 0.05);
+      osc.connect(filter);
+      osc.start(t0);
+      osc.stop(t0 + 0.055);
+    }
+  }, [ensureAudioContext]);
+
   const addHitParticles = useCallback((x: number, y: number, isFire?: boolean, isCrit?: boolean) => {
     const baseColor = isCrit
       ? (isFire ? '#ffd1c2' : '#fff6a6')
@@ -418,11 +680,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         setHitFlash(1);
         setShake(1);
         setPlayerHurt(1);
+        playHurtSound();
       }
       if (newHp <= 0) setGameStatus(GameStatus.GAMEOVER);
       return Math.max(0, newHp);
     });
-  }, []);
+  }, [playHurtSound]);
 
   const gainEnergy = useCallback((amount: number) => {
     if (amount <= 0) return;
@@ -458,6 +721,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       setHitFlash(1);
       setShake(1);
       addHitParticles((currentLaneRef.current * 20) + 10, 90, true);
+      playHurtSound();
       return;
     }
 
@@ -468,7 +732,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     const tg: BossTelegraph = { type, lanes, remainingMs: durationMs, durationMs };
     bossTelegraphRef.current = tg;
     setBossTelegraph(tg);
-  }, []);
+    playTelegraphSound(type);
+  }, [playTelegraphSound]);
 
   const executeBossAttack = useCallback((tg: BossTelegraph) => {
     if (tg.type === 'SLAM') {
@@ -623,6 +888,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     if (s.activeRemaining > 0) return;
     if (!spendEnergy(s.energyCost)) return;
 
+    playSkillSound(skillId);
+
     if (skillId === 'aoe') {
       const stats = WEAPON_MAP[weapon];
       const baseDamage = stats.damage * bulletBuffs.damageMult * AOE_DAMAGE_MULT;
@@ -653,6 +920,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       }
 
       if (kills > 0) {
+        playKillSound('big');
         setScore(v => v + kills * 25);
         setKills(v => v + kills);
         gainEnergy(kills * ENERGY_GAIN_PER_KILL);
@@ -682,7 +950,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       }
       return next;
     });
-  }, [AOE_DAMAGE_MULT, addHitParticles, bulletBuffs.damageMult, gainEnergy, spendEnergy, weapon]);
+  }, [AOE_DAMAGE_MULT, addHitParticles, bulletBuffs.damageMult, gainEnergy, playKillSound, playSkillSound, spendEnergy, weapon]);
 
   const update = useCallback((time: number) => {
     // Correct initialization to prevent delta time explosion
@@ -915,6 +1183,16 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       };
       const damagePlayerAabb = insetAabb(playerAabb, playerW * 0.18, playerH * 0.12);
       const pickupPlayerAabb = expandAabb(playerAabb, 10, 8);
+      const laneMinX = laneWidthPx > 0 ? currentLaneRef.current * laneWidthPx : 0;
+      const laneMaxX = laneWidthPx > 0 ? (currentLaneRef.current + 1) * laneWidthPx : 0;
+      const pickupLaneInsetX = 6;
+      const pickupPlayerAabbClamped: Aabb = laneWidthPx > 0
+        ? {
+            ...pickupPlayerAabb,
+            minX: Math.max(pickupPlayerAabb.minX, laneMinX + pickupLaneInsetX),
+            maxX: Math.min(pickupPlayerAabb.maxX, laneMaxX - pickupLaneInsetX)
+          }
+        : pickupPlayerAabb;
 
       for (const e of prevEntities) {
         const nextZ = e.z + entitySpeed * frameFactor * speedMult;
@@ -932,9 +1210,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
           const harmful = e.type === EntityType.ZOMBIE || e.type === EntityType.OBSTACLE;
           if (harmful) {
-            collided = aabbIntersects(damagePlayerAabb, insetAabb(entityAabb, e.width * 0.12, e.height * 0.12));
+            collided = e.lane === currentLaneRef.current && aabbIntersects(damagePlayerAabb, insetAabb(entityAabb, e.width * 0.12, e.height * 0.12));
           } else {
-            collided = aabbIntersects(pickupPlayerAabb, expandAabb(entityAabb, 8, 8));
+            collided = e.lane === currentLaneRef.current && aabbIntersects(pickupPlayerAabbClamped, expandAabb(entityAabb, 6, 6));
           }
         } else {
           collided = nextZ > 84 && nextZ < 94 && e.lane === currentLaneRef.current;
@@ -949,6 +1227,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
               setWeapon(nextWeapon);
               setScore(s => s + 100);
             }
+            playPickupSound('power');
           } else if (e.type === EntityType.BULLET_UPGRADE) {
             setBulletBuffs(b => ({
               ...b,
@@ -957,16 +1236,20 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
               isFire: e.subType === 'FIRE' ? true : b.isFire
             }));
             setScore(s => s + 50);
+            playPickupSound('power');
           } else if (e.type === EntityType.HEAL) {
             setPlayerHp(h => Math.min(100, h + 30));
+            playPickupSound('good');
           } else if (e.type === EntityType.ENERGY) {
             gainEnergy(25);
             setScore(s => s + 30);
+            playPickupSound('good');
           } else if (e.type === EntityType.SKILL_UNLOCK) {
             const label = e.subType ?? '';
             const skillId: SkillId = label.includes('Rage') ? 'rage' : label.includes('Shield') ? 'shield' : 'aoe';
             unlockSkill(skillId);
             setScore(s => s + 75);
+            playPickupSound('power');
           }
           // Remove entity on collision
           continue;
@@ -1010,6 +1293,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           const isCrit = Math.random() < critChance;
           const dmg = isCrit ? p.damage * critMultiplier : p.damage;
           addHitParticles((p.lane * 20) + 10, hitTarget.z, p.isFire, isCrit);
+          playHitSound(isCrit);
           setEntities(prev => {
             return prev
               .map(e => {
@@ -1021,6 +1305,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           });
           // If it was a kill, award after the hp update (approximate: use current hp snapshot)
           if (hitTarget.hp - dmg <= 0) {
+            playKillSound('small');
             setScore(s => s + 25);
             setKills(v => v + 1);
             gainEnergy(ENERGY_GAIN_PER_KILL);
@@ -1031,6 +1316,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         if (!hit && gameStatusRef.current === GameStatus.BOSS_FIGHT && nextZ < 25 && !(p.hitBoss ?? false)) {
           const isCrit = Math.random() < critChance;
           addHitParticles((p.lane * 20) + 10, 25, p.isFire, isCrit);
+          playHitSound(isCrit);
           setBoss(b => {
             if (!b) return null;
             const dmg = isCrit ? p.damage * critMultiplier : p.damage;
@@ -1092,6 +1378,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
   return (
     <div
       ref={containerRef}
+      onPointerDown={unlockAudio}
       className="relative w-full h-[85svh] md:h-[85vh] bg-[#0c0c0c] border-x-8 border-[#1a1a1a] overflow-hidden select-none shadow-inner"
     >
       <div
