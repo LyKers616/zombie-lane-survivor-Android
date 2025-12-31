@@ -47,6 +47,7 @@ export interface Entity {
   width: number;
   height: number;
   subType?: string;
+  eliteTier?: number;
   burnRemainingMs?: number;
   burnDps?: number;
 }
@@ -79,6 +80,14 @@ export interface Boss {
 
 export type SkillId = 'rage' | 'shield' | 'aoe';
 
+export interface MetaUpgrades {
+  playerMaxHpLevel: number;
+  playerDamageReductionLevel: number;
+  weaponDamageLevel: number;
+  weaponFireRateLevel: number;
+  startingWeaponLevel: number;
+}
+
 export interface SkillState {
   id: SkillId;
   unlocked: boolean;
@@ -106,6 +115,7 @@ export interface GameSessionResult {
   score: number;
   survivalTimeMs: number;
   kills: number;
+  coinsEarned: number;
   level?: number;
 }
 

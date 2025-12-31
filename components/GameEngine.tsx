@@ -12,7 +12,8 @@ import {
   SkillState,
   EnergyState,
   GameMode,
-  GameSessionResult
+  GameSessionResult,
+  MetaUpgrades
 } from '../types';
 import {
   LANE_COUNT,
@@ -33,6 +34,7 @@ import {
 interface GameEngineProps {
   level: number;
   mode?: GameMode;
+  metaUpgrades?: MetaUpgrades;
   onSessionEnd: (result: GameSessionResult) => void;
   onMissionIntel?: (intel: any) => void;
 }
@@ -186,15 +188,30 @@ const getModeRuntime = (mode: GameMode, baseDifficulty: number, survivalTimeMs: 
   };
 };
 
-const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) => {
+const GameEngine: React.FC<GameEngineProps> = ({ level, mode, metaUpgrades, onSessionEnd }) => {
   const resolvedMode: GameMode = mode ?? 'CAMPAIGN';
+  const upgrades: MetaUpgrades = metaUpgrades ?? {
+    playerMaxHpLevel: 0,
+    playerDamageReductionLevel: 0,
+    weaponDamageLevel: 0,
+    weaponFireRateLevel: 0,
+    startingWeaponLevel: 0
+  };
+
+  const playerMaxHp = 100 + upgrades.playerMaxHpLevel * 10;
+  const damageReduction = Math.min(0.30, upgrades.playerDamageReductionLevel * 0.04);
+  const weaponDamageMult = 1 + upgrades.weaponDamageLevel * 0.06;
+  const weaponFireRateMult = 1 + upgrades.weaponFireRateLevel * 0.05;
+  const startingWeapon: WeaponType = WEAPON_TIER[Math.max(0, Math.min(WEAPON_TIER.length - 1, upgrades.startingWeaponLevel))];
+
   const [gameStatus, setGameStatus] = useState<GameStatus>(GameStatus.PLAYING);
   const [score, setScore] = useState(0);
   const [distance, setDistance] = useState(0);
   const [playerLane, setPlayerLane] = useState(2);
-  const [playerHp, setPlayerHp] = useState(100);
+  const [playerHp, setPlayerHp] = useState(playerMaxHp);
   const [survivalTimeMs, setSurvivalTimeMs] = useState(0);
   const [kills, setKills] = useState(0);
+  const [coinsEarned, setCoinsEarned] = useState(0);
   const [energy, setEnergy] = useState<EnergyState>({ current: 40, max: ENERGY_MAX, totalGained: 0 });
   const [skills, setSkills] = useState<Record<SkillId, SkillState>>({
     rage: {
@@ -229,7 +246,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
   });
   const [entities, setEntities] = useState<Entity[]>([]);
   const [projectiles, setProjectiles] = useState<Projectile[]>([]);
-  const [weapon, setWeapon] = useState<WeaponType>(WeaponType.HANDGUN);
+  const [weapon, setWeapon] = useState<WeaponType>(startingWeapon);
   const [boss, setBoss] = useState<Boss | null>(null);
 
   const [particles, setParticles] = useState<Particle[]>([]);
@@ -275,6 +292,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
   const lastSkillSoundAtRef = useRef<number>(0);
   const lastTelegraphSoundAtRef = useRef<number>(0);
   const aoePulseRef = useRef<{ remainingMs: number; durationMs: number; laneCenter: number } | null>(null);
+  const bossKillAwardedRef = useRef(false);
+  const endlessStageRef = useRef(0);
+  const nextMiniBossAtMsRef = useRef(45000);
 
   // Use refs for values needed inside the animation frame but outside React state updates
   // to avoid closure issues and ensure "latest" values are used for simulation logic.
@@ -746,6 +766,29 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     });
   }, []);
 
+  const awardZombieKills = useCallback((count: number, variant?: 'small' | 'big', eliteTier: number = 0) => {
+    if (count <= 0) return;
+
+    const tier = Math.max(0, Math.floor(eliteTier));
+    const scorePer = tier >= 3 ? 240 : tier === 2 ? 120 : tier === 1 ? 60 : 25;
+    const coinsPer = tier >= 3 ? 30 : tier === 2 ? 14 : tier === 1 ? 6 : 2;
+    const energyPer = tier >= 3 ? 14 : tier === 2 ? 10 : tier === 1 ? 6 : ENERGY_GAIN_PER_KILL;
+
+    playKillSound(variant ?? 'small');
+    setScore(s => s + count * scorePer);
+    setKills(v => v + count);
+    gainEnergy(count * energyPer);
+    setCoinsEarned(c => c + count * coinsPer);
+  }, [gainEnergy, playKillSound]);
+
+  const awardBossKill = useCallback(() => {
+    if (bossKillAwardedRef.current) return;
+    bossKillAwardedRef.current = true;
+    playKillSound('big');
+    setScore(s => s + 400);
+    setCoinsEarned(c => c + 40);
+  }, [playKillSound]);
+
   const spendEnergy = useCallback((amount: number) => {
     if (amount <= 0) return true;
     const e = energyRef.current;
@@ -775,8 +818,9 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       return;
     }
 
-    damagePlayer(amount);
-  }, [addHitParticles, damagePlayer]);
+    const reduced = amount * (1 - damageReduction);
+    damagePlayer(reduced);
+  }, [addHitParticles, damagePlayer, damageReduction, playHurtSound]);
 
   const startBossTelegraph = useCallback((type: BossAttackType, lanes: number[], durationMs: number) => {
     const tg: BossTelegraph = { type, lanes, remainingMs: durationMs, durationMs };
@@ -881,7 +925,30 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
     let newEntity: Entity;
     if (rand < 0.6) {
-      newEntity = { id, lane, z: -10, type: EntityType.ZOMBIE, hp: 25 * difficultyFactor, maxHp: 25 * difficultyFactor, width: 50, height: 50 };
+      const stage = endlessStageRef.current;
+      const eliteChance = Math.min(0.35, 0.06 + stage * 0.03);
+      let eliteTier = 0;
+      if (Math.random() < eliteChance) {
+        eliteTier = stage >= 7 && Math.random() < 0.25 ? 2 : 1;
+      }
+
+      const hpMult = eliteTier === 2 ? 4.2 : eliteTier === 1 ? 2.2 : 1;
+      const size = eliteTier === 2 ? 74 : eliteTier === 1 ? 62 : 50;
+      const label = eliteTier === 2 ? '精英+' : eliteTier === 1 ? '精英' : undefined;
+      const hp = 25 * difficultyFactor * hpMult;
+
+      newEntity = {
+        id,
+        lane,
+        z: -10,
+        type: EntityType.ZOMBIE,
+        hp,
+        maxHp: hp,
+        width: size,
+        height: size,
+        subType: label,
+        eliteTier
+      };
     } else if (rand < 0.78) {
       newEntity = { id, lane, z: -10, type: EntityType.OBSTACLE, hp: 99999, maxHp: 99999, width: 60, height: 40 };
     } else if (rand < 0.94) {
@@ -921,6 +988,28 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     setEntities(prev => [...prev, newEntity]);
   }, []);
 
+  const spawnMiniBossWithDifficulty = useCallback((difficultyFactor: number, stage: number) => {
+    const lane = Math.floor(Math.random() * LANE_COUNT);
+    const id = Math.random().toString(36).substr(2, 9);
+    const tier = 3;
+    const hpMult = 7.5 + stage * 1.2;
+    const hp = 25 * difficultyFactor * hpMult;
+
+    const e: Entity = {
+      id,
+      lane,
+      z: -10,
+      type: EntityType.ZOMBIE,
+      hp,
+      maxHp: hp,
+      width: 92,
+      height: 92,
+      subType: '巨兽',
+      eliteTier: tier
+    };
+    setEntities(prev => [...prev, e]);
+  }, []);
+
   const unlockSkill = useCallback((skillId: SkillId) => {
     setSkills(prev => {
       const next = { ...prev };
@@ -942,9 +1031,10 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
     if (skillId === 'aoe') {
       const stats = WEAPON_MAP[weapon];
-      const baseDamage = stats.damage * bulletBuffs.damageMult * AOE_DAMAGE_MULT;
+      const baseDamage = stats.damage * bulletBuffs.damageMult * weaponDamageMult * AOE_DAMAGE_MULT;
       const laneCenter = currentLaneRef.current;
       let kills = 0;
+      const tierKills: Record<number, number> = {};
 
       setAoePulse({ remainingMs: 320, durationMs: 320, laneCenter });
 
@@ -954,7 +1044,11 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           if (Math.abs(e.z - 90) > AOE_Z_RANGE) return e;
           if (Math.abs(e.lane - laneCenter) > 2) return e;
           const newHp = e.hp - baseDamage;
-          if (newHp <= 0) kills += 1;
+          if (newHp <= 0) {
+            kills += 1;
+            const tier = Math.max(0, Math.floor(e.eliteTier ?? 0));
+            tierKills[tier] = (tierKills[tier] ?? 0) + 1;
+          }
           addHitParticles((e.lane * 20) + 10, e.z, true);
           return { ...e, hp: newHp };
         }).filter(e => e.hp > 0);
@@ -964,16 +1058,24 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         setBoss(b => {
           if (!b) return b;
           const newHp = b.hp - baseDamage * 0.30;
-          if (newHp <= 0) setGameStatus(GameStatus.VICTORY);
+          if (newHp <= 0) {
+            awardBossKill();
+            setGameStatus(GameStatus.VICTORY);
+          }
           return { ...b, hp: newHp };
         });
       }
 
       if (kills > 0) {
-        playKillSound('big');
-        setScore(v => v + kills * 25);
-        setKills(v => v + kills);
-        gainEnergy(kills * ENERGY_GAIN_PER_KILL);
+        if (Object.keys(tierKills).length === 0) {
+          awardZombieKills(kills, 'big');
+        } else {
+          for (const k of Object.keys(tierKills)) {
+            const tier = Number(k);
+            const count = tierKills[tier] ?? 0;
+            if (count > 0) awardZombieKills(count, 'big', tier);
+          }
+        }
       }
 
       setShake(1);
@@ -1000,7 +1102,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       }
       return next;
     });
-  }, [AOE_DAMAGE_MULT, addHitParticles, bulletBuffs.damageMult, gainEnergy, playKillSound, playSkillSound, spendEnergy, weapon]);
+  }, [addHitParticles, awardBossKill, awardZombieKills, bulletBuffs.damageMult, playSkillSound, spendEnergy, weapon, weaponDamageMult]);
 
   const update = useCallback((time: number) => {
     // Correct initialization to prevent delta time explosion
@@ -1015,14 +1117,27 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     lastTimeRef.current = time;
     const frameFactor = Math.min(deltaTime / 16, 3); // Cap frame factor to prevent huge teleports
 
-    if (gameStatusRef.current !== GameStatus.GAMEOVER && gameStatusRef.current !== GameStatus.VICTORY) {
+    const shouldTickSurvival = gameStatusRef.current !== GameStatus.GAMEOVER && gameStatusRef.current !== GameStatus.VICTORY;
+    if (shouldTickSurvival) {
       setSurvivalTimeMs(v => v + deltaTime);
     }
 
     const dtSeconds = deltaTime / 1000;
     gainEnergy(ENERGY_GAIN_PER_SECOND * dtSeconds);
 
-    const modeRuntime = getModeRuntime(resolvedMode, difficulty, survivalTimeMsRef.current);
+    const approxSurvivalMs = shouldTickSurvival ? (survivalTimeMsRef.current + deltaTime) : survivalTimeMsRef.current;
+    const modeRuntime = getModeRuntime(resolvedMode, difficulty, approxSurvivalMs);
+
+    if (resolvedMode === 'ENDLESS' && gameStatusRef.current === GameStatus.PLAYING) {
+      const stage = Math.max(0, Math.floor((approxSurvivalMs / 1000) / 30));
+      endlessStageRef.current = stage;
+
+      if (approxSurvivalMs >= nextMiniBossAtMsRef.current) {
+        spawnMiniBossWithDifficulty(modeRuntime.enemyDifficultyFactor, stage);
+        const nextInterval = Math.max(28000, 55000 - stage * 3500);
+        nextMiniBossAtMsRef.current = approxSurvivalMs + nextInterval;
+      }
+    }
     if (modeRuntime.timeScorePerSecond > 0) {
       setScore(s => s + modeRuntime.timeScorePerSecond * dtSeconds);
     }
@@ -1188,7 +1303,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
 
     // 2. Shooting Logic
     const stats = WEAPON_MAP[weapon];
-    const shootInterval = stats.fireRate / bulletBuffs.fireRateMult;
+    const shootInterval = stats.fireRate / (bulletBuffs.fireRateMult * weaponFireRateMult);
     if (time - lastShotTimeRef.current >= shootInterval) {
       const rageActive = skillsRef.current.rage.activeRemaining > 0;
       const newShots: Projectile[] = [];
@@ -1199,7 +1314,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           id: Math.random().toString(36).substr(2, 9),
           lane: currentLaneRef.current,
           z: 85,
-          damage: stats.damage * bulletBuffs.damageMult,
+          damage: stats.damage * bulletBuffs.damageMult * weaponDamageMult,
           color: hasBurn ? '#ff4a2a' : '#ffff00',
           isFire: hasBurn,
           burnDps: hasBurn ? burnDps : undefined,
@@ -1266,10 +1381,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           const nextBurnRemainingMs = Math.max(0, (cur.burnRemainingMs ?? 0) - deltaTime);
           const nextHp = cur.hp - burnDamage;
           if (nextHp <= 0) {
-            playKillSound('small');
-            setScore(s => s + 25);
-            setKills(v => v + 1);
-            gainEnergy(ENERGY_GAIN_PER_KILL);
+            awardZombieKills(1, 'small', cur.eliteTier ?? 0);
             continue;
           }
           cur = {
@@ -1323,7 +1435,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             setScore(s => s + 50);
             playPickupSound('power');
           } else if (cur.type === EntityType.HEAL) {
-            setPlayerHp(h => Math.min(100, h + 30));
+            setPlayerHp(h => Math.min(playerMaxHp, h + 30));
             playPickupSound('good');
           } else if (cur.type === EntityType.ENERGY) {
             gainEnergy(25);
@@ -1354,7 +1466,10 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         const nextBurnRemainingMs = Math.max(0, (b.burnRemainingMs ?? 0) - deltaTime);
         const burnDamage = (b.burnDps ?? 0) * dtSeconds;
         const nextHp = b.hp - burnDamage;
-        if (nextHp <= 0) setGameStatus(GameStatus.VICTORY);
+        if (nextHp <= 0) {
+          awardBossKill();
+          setGameStatus(GameStatus.VICTORY);
+        }
         return {
           ...b,
           hp: nextHp,
@@ -1412,10 +1527,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           });
           // If it was a kill, award after the hp update (approximate: use current hp snapshot)
           if (hitTarget.hp - dmg <= 0) {
-            playKillSound('small');
-            setScore(s => s + 25);
-            setKills(v => v + 1);
-            gainEnergy(ENERGY_GAIN_PER_KILL);
+            awardZombieKills(1, 'small', hitTarget.eliteTier ?? 0);
           }
         }
 
@@ -1428,7 +1540,10 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             if (!b) return null;
             const dmg = isCrit ? p.damage * critMultiplier : p.damage;
             const newHp = b.hp - dmg;
-            if (newHp <= 0) setGameStatus(GameStatus.VICTORY);
+            if (newHp <= 0) {
+              awardBossKill();
+              setGameStatus(GameStatus.VICTORY);
+            }
             if (p.burnDps && (p.burnDurationMs ?? 0) > 0) {
               const nextBurnRemainingMs = Math.max(b.burnRemainingMs ?? 0, p.burnDurationMs ?? 0);
               const nextBurnDps = Math.max(b.burnDps ?? 0, p.burnDps ?? 0);
@@ -1454,7 +1569,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     });
 
     requestRef.current = requestAnimationFrame(update);
-  }, [difficulty, executeBossAttack, gainEnergy, resolvedMode, spawnEntity, spawnEntityWithDifficulty, startBossTelegraph, tryDamagePlayer, weapon, bulletBuffs]);
+  }, [awardBossKill, awardZombieKills, difficulty, executeBossAttack, gainEnergy, playerMaxHp, resolvedMode, spawnEntity, spawnEntityWithDifficulty, spawnMiniBossWithDifficulty, startBossTelegraph, tryDamagePlayer, weapon, bulletBuffs, weaponDamageMult, weaponFireRateMult]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(update);
@@ -1486,6 +1601,8 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
     { id: 'shield' as const, icon: 'fa-solid fa-shield-halved', key: '2/E' },
     { id: 'aoe' as const, icon: 'fa-solid fa-burst', key: '3/R' }
   ];
+
+  const playerHpPct = playerMaxHp > 0 ? Math.max(0, Math.min(1, playerHp / playerMaxHp)) : 0;
 
   return (
     <div
@@ -1624,7 +1741,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
       {entities.map(e => (
         <div 
           key={e.id}
-          className={`absolute flex flex-col items-center justify-center rounded-xl border-2 z-20 ${ENTITY_COLORS[e.type]}`}
+          className={`absolute flex flex-col items-center justify-center rounded-xl border-2 z-20 ${e.type === EntityType.ZOMBIE && (e.eliteTier ?? 0) >= 3 ? 'bg-red-950/50 border-red-400' : e.type === EntityType.ZOMBIE && (e.eliteTier ?? 0) > 0 ? 'bg-amber-950/40 border-amber-300' : ENTITY_COLORS[e.type]}`}
           style={{ 
             left: `${(e.lane * 20) + 10}%`, 
             top: `${e.z}%`, 
@@ -1740,12 +1857,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           <div className="flex-1">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-black text-red-400 uppercase tracking-widest">血</span>
-              <span className="text-[11px] font-black text-white">{Math.ceil(playerHp)}%</span>
+              <span className="text-[11px] font-black text-white">{Math.ceil(playerHp)}/{playerMaxHp}</span>
             </div>
             <div className="w-full h-2 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
               <div
                 className="h-full rounded-full bg-red-500"
-                style={{ width: `${playerHp}%` }}
+                style={{ width: `${playerHpPct * 100}%` }}
               ></div>
             </div>
           </div>
@@ -1766,6 +1883,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
           <div className="text-right">
             <div className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">得分</div>
             <div className="text-lg font-black text-white font-mono tracking-tighter">{Math.floor(score).toLocaleString()}</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.3em] text-amber-300/80 mt-1">金币 {Math.floor(coinsEarned).toLocaleString()}</div>
           </div>
         </div>
       </div>
@@ -1775,12 +1893,12 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="w-full md:w-64">
           <div className="flex justify-between items-center mb-1">
             <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">生命</span>
-            <span className="text-lg font-black text-white">{Math.ceil(playerHp)}%</span>
+            <span className="text-lg font-black text-white">{Math.ceil(playerHp)}/{playerMaxHp}</span>
           </div>
           <div className="w-full h-4 bg-black/60 rounded-full border border-white/10 overflow-hidden shadow-inner p-0.5">
             <div 
-              className={`h-full rounded-full transition-all duration-300 ${playerHp < 30 ? 'bg-red-600 animate-none md:animate-pulse' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} 
-              style={{ width: `${playerHp}%` }}
+              className={`h-full rounded-full transition-all duration-300 ${playerHpPct < 0.30 ? 'bg-red-600 animate-none md:animate-pulse' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]'}`} 
+              style={{ width: `${playerHpPct * 100}%` }}
             ></div>
           </div>
 
@@ -1833,6 +1951,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
         <div className="md:text-right">
           <div className="text-neutral-500 text-[10px] font-black uppercase tracking-[0.3em]">得分</div>
           <div className="text-3xl md:text-5xl font-black text-white font-mono tracking-tighter">{Math.floor(score).toLocaleString()}</div>
+          <div className="mt-2 text-xs font-black uppercase tracking-[0.3em] text-amber-300/80">金币 {Math.floor(coinsEarned).toLocaleString()}</div>
         </div>
       </div>
 
@@ -1848,6 +1967,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
             <div className="mt-4 text-xs text-neutral-400 font-mono">
               <div>生存：{Math.floor(survivalTimeMs / 1000)}秒</div>
               <div>击杀：{kills}</div>
+              <div>金币：{coinsEarned}</div>
             </div>
           </div>
           <button 
@@ -1857,6 +1977,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
               score,
               survivalTimeMs,
               kills,
+              coinsEarned,
               level: resolvedMode === 'CAMPAIGN' ? level : undefined
             })}
             className="px-12 py-4 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl uppercase tracking-widest transition-transform active:scale-95 shadow-lg shadow-red-900/40"
@@ -1878,6 +1999,7 @@ const GameEngine: React.FC<GameEngineProps> = ({ level, mode, onSessionEnd }) =>
               score,
               survivalTimeMs,
               kills,
+              coinsEarned,
               level
             })}
             className="px-12 py-4 bg-yellow-500 hover:bg-yellow-400 text-black font-black rounded-xl uppercase tracking-widest transition-transform active:scale-95 shadow-lg shadow-yellow-900/40"
