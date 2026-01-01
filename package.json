@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:cordova": "vite build --base=./",
+    "preview": "vite preview",
+    "cordova:sync": "node scripts/cordova-sync.mjs",
+    "cordova:prepare": "npm run build:cordova && npm run cordova:sync",
+    "cordova:build:android": "npm run cordova:prepare && node scripts/cordova-build-android.mjs"
   },
   "dependencies": {
     "react": "^19.2.3",

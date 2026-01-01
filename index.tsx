@@ -18,13 +18,20 @@ root.render(
   </React.StrictMode>
 );
 
-let updateSW: undefined | ((reloadPage?: boolean) => Promise<void>);
+const canUseServiceWorker =
+  window.location.protocol === 'https:' ||
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1';
 
-updateSW = registerSW({
-  immediate: true,
-  async onNeedRefresh() {
-    await updateSW?.(true);
-    window.location.reload();
-  },
-  onOfflineReady() {},
-});
+if (canUseServiceWorker) {
+  let updateSW: undefined | ((reloadPage?: boolean) => Promise<void>);
+
+  updateSW = registerSW({
+    immediate: true,
+    async onNeedRefresh() {
+      await updateSW?.(true);
+      window.location.reload();
+    },
+    onOfflineReady() {},
+  });
+}

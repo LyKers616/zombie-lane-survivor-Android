@@ -34,6 +34,9 @@ async function emptyDir(dir) {
 const projectRoot = process.cwd();
 const distDir = path.resolve(projectRoot, 'dist');
 const cordovaWwwDir = path.resolve(projectRoot, 'cordova', 'www');
+const publicIconPng = path.resolve(projectRoot, 'public', 'zombie lane survivor.png');
+const cordovaResDir = path.resolve(projectRoot, 'cordova', 'res');
+const cordovaIconPng = path.resolve(cordovaResDir, 'icon.png');
 
 try {
   await fs.access(distDir);
@@ -43,3 +46,13 @@ try {
 
 await emptyDir(cordovaWwwDir);
 await copyDir(distDir, cordovaWwwDir);
+
+await fs.mkdir(cordovaResDir, { recursive: true });
+try {
+  await fs.access(publicIconPng);
+} catch {
+  throw new Error(
+    `Icon not found: ${publicIconPng}. Put your icon png under public/ or update scripts/cordova-sync.mjs to the correct filename.`
+  );
+}
+await fs.copyFile(publicIconPng, cordovaIconPng);
